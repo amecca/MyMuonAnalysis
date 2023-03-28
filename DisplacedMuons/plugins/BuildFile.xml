@@ -1,0 +1,25 @@
+<library   file="MuonGeneralAnalyzer.cc" name="MuonGeneralAnalyzer">
+  <use   name="FWCore/Framework"/>
+  <use   name="FWCore/ParameterSet"/>
+  <use   name="FWCore/ServiceRegistry"/>
+  <use   name="FWCore/MessageLogger"/>
+  <use   name="FWCore/Utilities"/>
+  <use   name="CommonTools/UtilAlgos"/>
+  <use   name="SimDataFormats/TrackingHit"/>
+  <use   name="SimDataFormats/Track"/>
+  <use   name="SimDataFormats/PileupSummaryInfo"/>
+  <use   name="DataFormats/Provenance"/>
+  <use   name="DataFormats/HepMCCandidate"/>
+  <use   name="DataFormats/VertexReco"/>
+  <use   name="DataFormats/DetId"/>
+  <use   name="DataFormats/MuonDetId"/>
+  <use   name="DataFormats/TrackReco"/>
+  <use   name="DataFormats/Math"/>
+  <use   name="Geometry/Records"/>
+  <!-- <use   name="TracksAssociator/CommonHitCounter"/> -->
+  <use   name="MyMuonAnalysis/DisplacedMuons"/>
+  <use   name="CLHEP"/>
+  <use   name="root"/>
+  <use   name="rootcore"/>
+  <flags   EDM_PLUGIN="1"/>
+</library>
