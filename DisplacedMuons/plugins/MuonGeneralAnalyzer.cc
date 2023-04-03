@@ -87,6 +87,7 @@ class MuonGeneralAnalyzer : public edm::one::EDAnalyzer<> {
   struct AssociationRow {
     // edm::Ref<reco::MuonCollection>
     reco::MuonRef  muon; // muon with inner track
+    reco::GenParticleRef genMuon;
     reco::TrackRef outerTrack;
     reco::TrackRef sdaTrack;
     reco::TrackRef sdaUpdTrack;
@@ -330,8 +331,8 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
   reco::TrackCollection outerTracks;
   outerTracks.reserve(muons->size());
   for(auto muon : *muons){
-    reco::TrackRef outerTrack = muon.outerTrack();  // WARN: can be null. Test it with isAvailable()
-    if(outerTrack.isAvailable())
+    reco::TrackRef outerTrack = muon.outerTrack();
+    if(outerTrack.isNonnull())  // isAvailable()
       outerTracks.push_back(*outerTrack);
   }
 
@@ -345,16 +346,36 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
     AssociationRow row;
     row.muon = reco::MuonRef(muons, i);
     row.outerTrack = row.muon->outerTrack();
-    // if(row.outerTrack.isAvailable()){
-    //   auto it_SdA    = outerToSdA   .find(row.outerTrack);
-    //   auto it_SdAUpd = outerToSdAUpd.find(row.outerTrack);
-    //   if(it_SdA    != outerToSdA.end()   )
-    // 	row.sdaTrack    = *it_SdA;
-    //   if(it_SdAUpd != outerToSdAUpd.end())
-    // 	row.sdaUpdTrack = *it_SdAUpd;
-    // }
+
+    if(row.outerTrack.isNonnull()){
+      auto it_SdA    = outerToSdA   .find(row.outerTrack);
+      auto it_SdAUpd = outerToSdAUpd.find(row.outerTrack);
+      row.sdaTrack    = it_SdA    != outerToSdA.end()    ? it_SdA->val    : reco::TrackRef(saTracks.id()   );
+      row.sdaUpdTrack = it_SdAUpd != outerToSdAUpd.end() ? it_SdAUpd->val : reco::TrackRef(saUpdTracks.id());
+    }
+
+    float muEta = row.muon->eta();
+    float muPhi = row.muon->phi();
+    auto it_closestGen = std::min_element(genMuons.begin(), genMuons.end(), [muEta, muPhi](const reco::GenParticle& a, const reco::GenParticle& b) {
+	return deltaR(muEta, muPhi, a.eta(), a.phi()) < deltaR(muEta, muPhi, b.eta(), b.phi());
+      } );
+    row.genMuon = it_closestGen != genMuons.end() && deltaR(muEta, muPhi, it_closestGen->eta(), it_closestGen->phi()) < 0.2 ? 
+      reco::GenParticleRef(&genMuons, std::distance(genMuons.begin(), it_closestGen)) : 
+      reco::GenParticleRef();
+
     associationTable.push_back(std::move(row));
   }
+  
+  
+  std::cout << Form("%6s | %6s | %6s | %6s | %6s\n", "muon", "genMu", "outer", "SdA", "SdAUpd");
+  for(const AssociationRow& row : associationTable)
+    std::cout << Form("%6d | %6d | %6s | %6d | %6d\n",
+		      row.muon.key(),
+		      row.genMuon.isNonnull() ? row.genMuon.key() : -1,
+		      row.outerTrack.isNonnull() ? "OK" : "-",
+		      row.sdaTrack   .isNonnull() ? row.sdaTrack   .key() : -1,
+		      row.sdaUpdTrack.isNonnull() ? row.sdaUpdTrack.key() : -1
+		      );
   
   // ********************************************************************************
   

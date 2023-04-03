@@ -55,6 +55,9 @@ class CommonHitCounter {
   
   std::tuple<int, int, int> countMatchingHits(const std::vector<TrackingRecHit*>&, const std::vector<TrackingRecHit*>&) const;
   std::tuple<int, int, int> countMatchingHits(const reco::Track& t1, const reco::Track& t2, bool flatten=false) const;
+  std::tuple<int, int, int> countMatchingHits(const reco::TrackRef& t1, const reco::TrackRef& t2, bool flatten=false) const{
+    return countMatchingHits(t1, t2, flatten);
+  }
 
  protected:
   std::vector<TrackingRecHit*> hitsFromTrack(const reco::Track& t, bool flatten=false) const;
