@@ -45,13 +45,13 @@
 class CommonHitCounter {
  public:
   typedef std::pair<reco::TrackRef, float> TrackRefProb;
-  /* typedef edm::AssociationMap<edm::OneToOne<reco::TrackCollection, reco::TrackCollection>> map_type; */
+  typedef edm::AssociationMap<edm::OneToOne<reco::TrackCollection, reco::TrackCollection>> map_type;
 
   explicit CommonHitCounter(const edm::ParameterSet&);
 
   /* std::vector<TrackRefProb> matchingTracks(const reco::TrackRef& trackRefFrom, reco::TrackCollection& tracksTo, bool flatten) const; */
   std::vector<TrackRefProb> matchingTracks(const reco::Track&       trackFrom, reco::TrackCollection& tracksTo, bool flatten) const;
-  /* map_type associateTracks(const reco::TrackCollection&, reco::TrackCollection&, bool flatten=false) const; */
+  map_type matchingTrackCollections(const reco::TrackCollection&, const reco::TrackCollection&, bool flatten=false) const;
   
   std::tuple<int, int, int> countMatchingHits(const std::vector<TrackingRecHit*>&, const std::vector<TrackingRecHit*>&) const;
   std::tuple<int, int, int> countMatchingHits(const reco::Track& t1, const reco::Track& t2, bool flatten=false) const;

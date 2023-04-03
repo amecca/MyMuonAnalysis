@@ -31,70 +31,73 @@ std::vector<CommonHitCounter::TrackRefProb> CommonHitCounter::matchingTracks(con
 }
 
 
+// std::vector<>
+
+
 // std::vector<CommonHitCounter::TrackRefProb> CommonHitCounter::matchingTracks(const reco::TrackRef& trackRefFrom, reco::TrackCollection& tracksTo, bool flatten) const{
 //   return matchingTracks(*trackRefFrom, tracksTo, flatten);
 // }
 
 
-// CommonHitCounter::map_type CommonHitCounter::associateTracks(const reco::TrackCollection& tracksFrom, reco::TrackCollection& tracksTo, bool flatten) const{
-//   typedef std::pair<reco::TrackRef, std::vector<TrackingRecHit*>> TrackHitsPair;
-//   typedef std::pair<std::vector<TrackHitsPair>::iterator, float> IterProbPair;
+CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const reco::TrackCollection& tracksFrom, const reco::TrackCollection& tracksTo, bool flatten) const{
+  typedef std::pair<reco::TrackRef, std::vector<TrackingRecHit*>> TrackHitsPair;
+  typedef std::pair<std::vector<TrackHitsPair>::iterator, float> IterProbPair;
   
-//   // Tracks and their hits
-//   std::vector<TrackHitsPair> trackToHitsFrom;
-//   std::vector<TrackHitsPair> trackToHitsTo  ;
+  // Tracks and their hits
+  std::vector<TrackHitsPair> trackToHitsFrom;
+  std::vector<TrackHitsPair> trackToHitsTo  ;
   
-//   for(size_t i = 0; i < tracksFrom.size(); ++i)
-//     trackToHitsFrom.push_back(std::make_pair(
-// 					     reco::TrackRef(&tracksFrom, i),
-// 					     hitsFromTrack(tracksFrom.at(i), flatten))
-// 			      );
-//   for(size_t i = 0; i < tracksTo.size(); ++i)
-//     trackToHitsTo.push_back  (std::make_pair(
-// 					     reco::TrackRef(&tracksTo  , i),
-// 					     hitsFromTrack(tracksTo.at(i)  , flatten))
-// 			      );
+  for(size_t i = 0; i < tracksFrom.size(); ++i)
+    trackToHitsFrom.push_back(std::make_pair(
+					     reco::TrackRef(&tracksFrom, i),
+					     hitsFromTrack(tracksFrom.at(i), flatten))
+			      );
+  for(size_t i = 0; i < tracksTo.size(); ++i)
+    trackToHitsTo.push_back  (std::make_pair(
+					     reco::TrackRef(&tracksTo  , i),
+					     hitsFromTrack(tracksTo.at(i)  , flatten))
+			      );
   
-//   map_type associationMap;
-//   // std::vector<std::tuple<size_t, size_t, float>> associationMap;  // TEMP
+  map_type associationMap;
+  // std::vector<std::tuple<size_t, size_t, float>> associationMap;  // TEMP
   
-//   for(auto& [trackFrom, hitsFrom] : trackToHitsFrom){
-//     std::vector<IterProbPair> vIterProbsTo;  // <<Track,Hits>, prob>, prob is the probability that a given Track (to) shares the hits from this Track (from)
+  for(auto& [trackFrom, hitsFrom] : trackToHitsFrom){
+    std::vector<IterProbPair> vIterProbsTo;  // <<Track,Hits>, prob>, prob is the probability that a given Track (to) shares the hits from this Track (from)
     
-//     for(auto iterIdxHitsTo = trackToHitsTo.begin(); iterIdxHitsTo != trackToHitsTo.end(); ++iterIdxHitsTo){ //auto& [idxTo, hitsTo]:trackToHitsTo
-//       const reco::TrackRef& trackTo = iterIdxHitsTo->first;
-//       std::vector<TrackingRecHit*>& hitsTo = iterIdxHitsTo->second;
+    for(auto iterIdxHitsTo = trackToHitsTo.begin(); iterIdxHitsTo != trackToHitsTo.end(); ++iterIdxHitsTo){ //auto& [idxTo, hitsTo]:trackToHitsTo
+      const reco::TrackRef& trackTo = iterIdxHitsTo->first;
+      std::vector<TrackingRecHit*>& hitsTo = iterIdxHitsTo->second;
       
-//       int nMatch, nFrom, nTo;
-//       std::tie (nMatch, nFrom, nTo) = countMatchingHits(hitsFrom, hitsTo);
+      int nMatch, nFrom, nTo;
+      std::tie (nMatch, nFrom, nTo) = countMatchingHits(hitsFrom, hitsTo);
       
-//       if(nMatch){
-// 	float prob = nMatch/(std::min(nTo, nFrom));
-// 	if(debug_)
-// 	  std::cout << Form("\tTracks: %u, %u \tmatch: %d, 1: %d, 2: %d --> %.1f%%\n",
-// 			    trackFrom.key(), trackTo.key(), nMatch, nFrom, nTo, 100*prob
-// 			    );
-// 	vIterProbsTo.push_back(make_pair(iterIdxHitsTo, prob));
-//       }
-//     }
+      if(nMatch){
+	float prob = nMatch/(std::min(nTo, nFrom));
+	if(debug_)
+	  std::cout << Form("\tTracks: %u, %u \tmatch: %d, 1: %d, 2: %d --> %.1f%%\n",
+			    trackFrom.key(), trackTo.key(), nMatch, nFrom, nTo, 100*prob
+			    );
+	vIterProbsTo.push_back(make_pair(iterIdxHitsTo, prob));
+      }
+    }
     
-//     if(vIterProbsTo.size() > 0){
-//       std::sort(vIterProbsTo.begin(), vIterProbsTo.end(),
-// 		[](const IterProbPair& a, const IterProbPair& b){ return a.second > b.second; }
-// 		);
-//       auto winner = vIterProbsTo.front();
-//       if(debug_)
-// 	std::cout << "Choosen: "<<vIterProbsTo.front().second<<" last: "<<vIterProbsTo.back().second<<'\n';
-//       if(winner.second > 0.5){
-// 	const reco::TrackRef& trackTo = winner.first->first;
-// 	// associationMap.push_back( std::make_tuple(idxFrom, idxTo, winner.second) );
-// 	associationMap.insert(trackFrom, trackTo);
-// 	trackToHitsTo.erase(winner.first);
-//       }
-//     }
-//   }
-//   return associationMap;
-// }
+    if(vIterProbsTo.size() > 0){
+      std::sort(vIterProbsTo.begin(), vIterProbsTo.end(),
+		[](const IterProbPair& a, const IterProbPair& b){ return a.second > b.second; }
+		);
+      auto winner = vIterProbsTo.front();
+      if(debug_)
+	std::cout << "Choosen: "<<vIterProbsTo.front().second<<" last: "<<vIterProbsTo.back().second<<'\n';
+      if(winner.second > 0.5){
+	const reco::TrackRef& trackTo = winner.first->first;
+	// associationMap.push_back( std::make_tuple(idxFrom, idxTo, winner.second) );
+	associationMap.insert(trackFrom, trackTo);
+	trackToHitsTo.erase(winner.first);
+      }
+    }
+  }
+  return associationMap;
+}
 
 
 // ------------ Utility functions used internally ------------
@@ -127,7 +130,7 @@ std::vector<TrackingRecHit*> CommonHitCounter::hitsFromTrack(const reco::Track& 
   std::copy(begin, end, hits.begin());
   
   if(flatten){
-std::vector<TrackingRecHit*> out = flattenTrackingRecHits(hits);
+    std::vector<TrackingRecHit*> out = flattenTrackingRecHits(hits);
     return out;
   }
   else
@@ -143,7 +146,7 @@ std::tuple<int, int, int> CommonHitCounter::countMatchingHits(const std::vector<
     for(const TrackingRecHit* h2 : hits_2){
       // if(! recHitCondition(h2)) continue;
       
-      if(h1->rawId() == h2->rawId() /*&& TODO compare local position */ )
+      if(h1->rawId() == h2->rawId() && h1->localPosition() == h2->localPosition() )
   	++matches;
     }
   }
@@ -225,5 +228,5 @@ void CommonHitCounter::dumpHit(const TrackingRecHit& hit, std::ostream& ostr) co
 
   // TrackingRecHit::Type type = ;
   
-  ostr<<"DetId="<<detName<<':'<<id.subdetId()<<"  type="<<type<<"  #recHits="<<hit.recHits().size()<<"  isValid="<<hit.isValid()<<"  rawId="<<hit.rawId()<<'\n';
+  ostr<<"DetId="<<detName<<':'<<id.subdetId()<<"  type="<<type<<"  #recHits="<<hit.recHits().size()<<"  isValid="<<hit.isValid()<<"  rawId="<<hit.rawId()<<"  localPosition="<<hit.localPosition()<<'\n';
 }

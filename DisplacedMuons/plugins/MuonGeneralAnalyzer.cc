@@ -36,8 +36,8 @@
 #include "SimDataFormats/Track/interface/SimTrackContainer.h"
 #include "SimDataFormats/PileupSummaryInfo/interface/PileupSummaryInfo.h"
 #include "DataFormats/Provenance/interface/ProductID.h"
-//#include "DataFormats/MuonReco/interface/Muon.h"
-//#include "DataFormats/MuonReco/interface/MuonFwd.h"
+#include "DataFormats/MuonReco/interface/MuonFwd.h"
+#include "DataFormats/MuonReco/interface/Muon.h"
 //#include "DataFormats/MuonReco/interface/MuonSelectors.h"
 //#include "DataFormats/PatCandidates/interface/Muon.h"
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"
@@ -83,6 +83,20 @@ using std::string;
 #define MuonGeneralAnalyzer_BINS_allpu 20,200.,600
 
 class MuonGeneralAnalyzer : public edm::one::EDAnalyzer<> {
+  // Helper struct defining a "row" of associations
+  struct AssociationRow {
+    // edm::Ref<reco::MuonCollection>
+    reco::MuonRef  muon; // muon with inner track
+    reco::TrackRef outerTrack;
+    reco::TrackRef sdaTrack;
+    reco::TrackRef sdaUpdTrack;
+    
+    // reco::TrackRef oldSdaTrack;
+    // reco::TrackRef oldSdaUpdTrack;
+    // reco::TrackRef newSdaTrack;
+    // reco::TrackRef newSdaUpdTrack;
+  };
+  
 public:
   explicit MuonGeneralAnalyzer(const edm::ParameterSet&);
   ~MuonGeneralAnalyzer();
@@ -98,6 +112,7 @@ private:
   virtual void endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&);
   
   // Internal utilities
+  void createPlots();
   int fillMatchedPlots(const char* label, const reco::TrackCollection& trackCollection, const reco::GenParticle& gp, int npuOOT, int npuIT);
   void fillFakePlots(const char* label, const reco::TrackCollection& trackCollection, const std::vector<bool>& mask, int npuOOT, int npuIT);
   void endPlots(const char* label);
@@ -116,7 +131,7 @@ private:
   // Tokens 
   edm::EDGetTokenT<std::vector<PileupSummaryInfo> > puInfoTag_;
   edm::EDGetTokenT<reco::GenParticleCollection> gpToken_;
-  // edm::EDGetTokenT<reco::MuonCollection> muonToken_;
+  edm::EDGetTokenT<reco::MuonCollection> muonToken_;
   edm::EDGetTokenT<reco::TrackCollection> saTracksToken_;
   edm::EDGetTokenT<reco::TrackCollection> saUpdTracksToken_;
   edm::EDGetTokenT<reco::TrackCollection> globalTracksToken_;
@@ -147,7 +162,7 @@ MuonGeneralAnalyzer::MuonGeneralAnalyzer(const edm::ParameterSet& iConfig) :
   processTag_(iConfig.getParameter<edm::InputTag>("saTracksTag").process()),
   puInfoTag_( consumes<std::vector<PileupSummaryInfo> >(iConfig.getParameter<edm::InputTag>("puInfoTag")) ),
   gpToken_( consumes<reco::GenParticleCollection>(iConfig.getParameter<edm::InputTag>("gpCollectionTag")) ),
-  //muonToken_( consumes<reco::MuonCollection>(iConfig.getParameter<edm::InputTag>("muonTag")) ),
+  muonToken_(        consumes<reco::MuonCollection> (iConfig.getParameter<edm::InputTag>("muonTag"       )) ),
   saTracksToken_(    consumes<reco::TrackCollection>(iConfig.getParameter<edm::InputTag>("saTracksTag"   )) ),
   saUpdTracksToken_( consumes<reco::TrackCollection>(iConfig.getParameter<edm::InputTag>("saUpdTracksTag")) ),
   globalTracksToken_(consumes<reco::TrackCollection>(iConfig.getParameter<edm::InputTag>("globalTracks"  )) ),
@@ -169,22 +184,289 @@ MuonGeneralAnalyzer::MuonGeneralAnalyzer(const edm::ParameterSet& iConfig) :
   //   psetCommonHitCounter = iConfig.getParameter<edm::ParameterSet>("hitCounterParams");
   // commonHitCounter = CommonHitCounter(psetCommonHitCounter);
   
+  ////// == Plots ==
+  createPlots();
+}
 
+
+MuonGeneralAnalyzer::~MuonGeneralAnalyzer() { 
+  if(debugPrint) std::cout << "Inside Destructor" << std::endl;
+}
+
+
+//
+// member functions
+//
+
+// ------------ method called for each event  ------------
+void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
+  using namespace edm;
+  using std::string;
+
+  if(debugPrint || outputPrint) std::cout << "============================  Inside analyze " << processTag_ << ' '
+					  // << iEvent.id().run() << "  "
+					  // << iEvent.id().luminosityBlock() << "  "
+					  // << iEvent.id().event() << "  "
+					  << "============================" << std::endl;
+
+  hists_["evt_muo_counter"]->Fill(1.);
+
+  edm::Handle<std::vector<PileupSummaryInfo> > puInfoH;
+  iEvent.getByToken(puInfoTag_,puInfoH);
+  int npuOOT(0),npuIT(0),npuOOTm1(0);
+  if(puInfoH.isValid()) {
+    for(std::vector<PileupSummaryInfo>::const_iterator it=puInfoH->begin(); it!=puInfoH->end(); ++it) {
+      if(it->getBunchCrossing()==0) {
+	npuIT += it->getPU_NumInteractions();
+      }
+      else {
+	npuOOT += it->getPU_NumInteractions();
+	//npuOOT = 0; // TMP: figure out how to use this!!!
+      }
+
+      if(it->getBunchCrossing()<0)
+	npuOOTm1 += it->getPU_NumInteractions();
+    }
+  }
+
+  // GenParticles 
+  edm::Handle<reco::GenParticleCollection> genParts; 
+  iEvent.getByToken(gpToken_, genParts); 
+  if(!genParts.isValid()) {
+    throw cms::Exception("GenParticleCollection not valid!"); 
+  } 
+  else {
+    if(debugPrint) std::cout << "Found GenParticleCollection! (" << genParts->size() << ')' << std::endl;
+  }
+  std::vector<reco::GenParticle> genMuons;
+  genMuons.reserve(8); // Start from a reasonable size to skip some reallocations
+  std::copy_if(genParts->begin(), genParts->end(), back_inserter(genMuons),
+	       [](const reco::GenParticle gp) { return abs(gp.pdgId()) == 13; }
+	       );
+  if(debugPrint) std::cout << "of which (" << genMuons.size() << ") are gen muons" << std::endl;
+
+  // Muons (all)
+  edm::Handle<reco::MuonCollection> muons;
+  iEvent.getByToken(muonToken_, muons);
+  if(!muons.isValid()) {
+    if(outputPrint || debugPrint) std::cout << "Muon collection not valid!" << std::endl;
+    return;
+  }
+  else {
+    if(debugPrint) std::cout << "Found Muon collection!" << muons->size() << ')' << std::endl;
+  }
+  
+  // GL tracks
+  edm::Handle<reco::TrackCollection> glTracks;
+  iEvent.getByToken(globalTracksToken_, glTracks);
+  if(!glTracks.isValid()) {
+    if(outputPrint || debugPrint) std::cout << "GLOBAL track collection not valid!" << std::endl;
+    return;
+  }
+  else {
+    if(debugPrint) std::cout << "Found GLOBAL track collection! (" << glTracks->size() << ')' << std::endl;
+  }
+
+  // SA tracks
+  edm::Handle<reco::TrackCollection> saTracks;
+  iEvent.getByToken(saTracksToken_, saTracks);
+  if(!saTracks.isValid()) {
+    if(outputPrint || debugPrint) std::cout << "SA track collection not valid!" << std::endl;
+    return;
+  }
+  else {
+    if(debugPrint) std::cout << "Found SA track collection! (" << saTracks->size() << ')' << std::endl;
+  }
+
+  // SA-updated at vertex tracks
+  edm::Handle<reco::TrackCollection> saUpdTracks;
+  iEvent.getByToken(saUpdTracksToken_, saUpdTracks);
+  if(!saUpdTracks.isValid()) {
+    if(outputPrint || debugPrint) std::cout << "SA Updated track collection not valid!" << std::endl;
+    return;
+  }
+  else {
+    if(debugPrint) std::cout << "Found SA Updated track collection! (" << saUpdTracks->size() << ')' << std::endl;
+  }
+  
+  // ################################################################################
+  // test
+  for(auto sa : *saTracks){
+    for(auto saUpd : *saUpdTracks){
+      auto tuple_hits = commonHitCounter.countMatchingHits(sa, saUpd, true);
+      std::cout << "tuple_hits: " << std::get<0>(tuple_hits) << ' ' << std::get<1>(tuple_hits) << ' ' << std::get<2>(tuple_hits) << '\n';
+    }
+  }
+  return;
+  // ################################################################################
+
+  //std::cout << "--- 1" << std::endl;
+  reco::TrackCollection sa0hitsTracks;
+  for(auto trk : *saTracks){
+    if(trk.hitPattern().numberOfValidMuonHits() == 0)
+      sa0hitsTracks.push_back(trk);
+  }
+
+  reco::TrackCollection saupd0hitsTracks;
+  for(auto trk : *saUpdTracks){
+    if(trk.hitPattern().numberOfValidMuonHits() == 0)
+      saupd0hitsTracks.push_back(trk);
+  }
+  
+  reco::TrackCollection gl0hitsTracks;
+  for(auto trk : *glTracks){
+    if(trk.hitPattern().numberOfValidMuonHits() == 0)
+      gl0hitsTracks.push_back(trk);
+  }
+  
+  std::vector<bool>    saMask(   saTracks->size(), false);
+  std::vector<bool> saupdMask(saUpdTracks->size(), false);
+  std::vector<bool>    glMask(   glTracks->size(), false);
+  
+  //std::cout << "--- 2" << std::endl;
+  
+  // ********************************************************************************
+  // Make individual associations
+  reco::TrackCollection outerTracks;
+  outerTracks.reserve(muons->size());
+  for(auto muon : *muons){
+    reco::TrackRef outerTrack = muon.outerTrack();  // WARN: can be null. Test it with isAvailable()
+    if(outerTrack.isAvailable())
+      outerTracks.push_back(*outerTrack);
+  }
+
+  CommonHitCounter::map_type outerToSdA    = commonHitCounter.matchingTrackCollections(outerTracks, *saTracks   );
+  CommonHitCounter::map_type outerToSdAUpd = commonHitCounter.matchingTrackCollections(outerTracks, *saUpdTracks);
+  
+  // Contruct the table 
+  std::vector<AssociationRow> associationTable;
+  associationTable.reserve(muons->size());
+  for(unsigned int i = 0; i < muons->size(); ++i){
+    AssociationRow row;
+    row.muon = reco::MuonRef(muons, i);
+    row.outerTrack = row.muon->outerTrack();
+    // if(row.outerTrack.isAvailable()){
+    //   auto it_SdA    = outerToSdA   .find(row.outerTrack);
+    //   auto it_SdAUpd = outerToSdAUpd.find(row.outerTrack);
+    //   if(it_SdA    != outerToSdA.end()   )
+    // 	row.sdaTrack    = *it_SdA;
+    //   if(it_SdAUpd != outerToSdAUpd.end())
+    // 	row.sdaUpdTrack = *it_SdAUpd;
+    // }
+    associationTable.push_back(std::move(row));
+  }
+  
+  // ********************************************************************************
+  
+  reco::TrackCollection genMuonTracks;
+  // Fill plots
+  for(auto gp : *genParts) {
+    if(abs(gp.pdgId())!=13) continue;
+    // Denominator
+    float geneta  = gp.eta();
+    float genaeta = fabs(geneta);
+    if(genaeta>2.4) continue;
+    hists_["evt_muo_counter"]->Fill(2.);
+    float genpt = gp.pt();
+    float genphi = gp.phi();
+    
+    hists_["eff_den_aeta" ]->Fill(genaeta);
+    hists_["eff_den_pt"   ]->Fill(genpt);
+    hists_["eff_den_phi"  ]->Fill(genphi);
+    hists_["eff_den_pu"   ]->Fill(npuIT);
+    hists_["eff_den_allpu"]->Fill(npuIT+npuOOT);
+
+    //std::cout << "--- 2.1" << std::endl;
+    
+    // SA tracks
+    int saIdx = fillMatchedPlots("sa"        , *saTracks       , gp, npuOOT, npuIT);
+    if(saIdx >= 0)
+      saMask.at(saIdx) = true;
+    // std::cout << "sa: "<<saIdx<<std::endl;
+    // fillMatchedPlots("sa0hits"   , sa0hitsTracks  , gp, npuOOT, npuIT);
+    
+    // SA-updated tracks
+    int saupdIdx = fillMatchedPlots("saupd"     , *saUpdTracks    , gp, npuOOT, npuIT);
+    if(saupdIdx >= 0)
+      saupdMask.at(saupdIdx) = true;
+    // std::cout << "saupd: "<<saupdIdx<<std::endl;
+    // fillMatchedPlots("saupd0hits", saupd0hitsTracks, gp, npuOOT, npuIT);
+
+    // GLOBAL tracks
+    int glIdx = fillMatchedPlots("gl"        , *glTracks       , gp, npuOOT, npuIT);
+    if(glIdx >= 0)
+      glMask.at(glIdx) = true;
+    // std::cout << "gl: "<<glIdx<<std::endl;
+    // fillMatchedPlots("gl0hits"   , gl0hitsTracks   , gp, npuOOT, npuIT);
+  }
+  
+  fillFakePlots("sa"   , *saTracks   , saMask   , npuOOT, npuIT);
+  fillFakePlots("saupd", *saUpdTracks, saupdMask, npuOOT, npuIT);
+  fillFakePlots("gl"   , *glTracks   , glMask   , npuOOT, npuIT);
+
+  return;
+}
+
+
+// ------------ method called once each job just before starting event loop  ------------
+void MuonGeneralAnalyzer::beginJob() {
+}
+
+// ------------ method called once each job just after ending the event loop  ------------
+void MuonGeneralAnalyzer::endJob() {
+  endPlots("sa");
+  endPlots("sa0hits");
+  endPlots("saupd");
+  endPlots("saupd0hits");
+  endPlots("gl");
+  endPlots("gl0hits");
+} 
+
+// ------------ method called when starting to processes a run  ------------
+void MuonGeneralAnalyzer::beginRun(edm::Run const& iRun, edm::EventSetup const& iSetup) {
+  // edm::ESHandle<TrackAssociatorBase> theAssociator;
+  // for(size_t w=0; w<associatorNames.size(); ++w) { 
+  //   iSetup.get<TrackAssociatorRecord>().get(associatorNames[w], theAssociator); 
+  //   if(theAssociator.isValid()) associators.push_back(theAssociator.product()); 
+  // } 
+  // if(associators.size()==0) { 
+  //   TString assonames; 
+  //   for(size_t w=0; w<associatorNames.size(); ++w) assonames += (associatorNames[w]+" "); 
+  //   throw cms::Exception("No Associators found")
+  //     << "Cannot find any of the following associators: " << assonames.Data(); 
+  // } 
+} // end of beginRun
+
+
+// ------------ method called when ending the processing of a run  ------------
+void MuonGeneralAnalyzer::endRun(edm::Run const&, edm::EventSetup const&) {
+}
+
+
+// ------------ method called when starting to processes a luminosity block  ------------
+void MuonGeneralAnalyzer::beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&) {
+}
+
+// ------------ method called when ending the processing of a luminosity block  ------------
+void MuonGeneralAnalyzer::endLuminosityBlock(edm::LuminosityBlock const& iLumiBlock, edm::EventSetup const&) {
+}
+
+
+void MuonGeneralAnalyzer::createPlots(){
   // -- Binnings --
   //double pt_bins[] = {0., 5., 10., 15., 20., 25., 30., 35., 40., 45., 50., 60., 70., 80., 90., 100., 150., 200.};
   double pt_bins[] = {0., 1., 2., 3., 4., 5., 7.5, 10., 15., 20., 35., 50., 100., 200.};
-  int n_pt_bins = sizeof(pt_bins)/sizeof(double);
+  int n_pt_bins = sizeof(pt_bins)/sizeof(*pt_bins);
 
   // //double eta_bins[] = {-2.4, -2.1, -1.6, -1.2, -0.9, -0.3, -0.2, 0.2, 0.3, 0.9, 1.2, 1.6, 2.1, 2.4};
   // double eta_bins[] = {-3.4, -3.2, -3.0, -2.8, -2.6, -2.4, -2.2, -2.0, -1.8, -1.6, -1.4, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 3.2, 3.4};
   // int n_eta_bins = sizeof(eta_bins)/sizeof(double);
 
   double aeta_bins[] = {0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6};
-  int n_aeta_bins = sizeof(aeta_bins)/sizeof(double);
+  int n_aeta_bins = sizeof(aeta_bins)/sizeof(*aeta_bins);
 
   static const double pig=3.1416;
 
-  ////// == Plots ==
   //// ~~ Common ~~
   hists_["eff_den_pt"      ] = outfile_->make<TH1F>("eff_den_pt"    , ";muon p_{T} [GeV];events (denominator)"                      , n_pt_bins-1  , pt_bins  );
   hists_["eff_den_aeta"    ] = outfile_->make<TH1F>("eff_den_aeta"  , ";muon |#eta|;events (denominator)"                           , n_aeta_bins-1, aeta_bins);
@@ -289,231 +571,8 @@ MuonGeneralAnalyzer::MuonGeneralAnalyzer(const edm::ParameterSet& iConfig) :
     hists_[Form("%s_fake_nvalsegs_ovl_permuo", label)] = outfile_->make<TH1F>(Form("%s_fake_nvalsegs_ovl_permuo", label), ";number of valid overlap segments;n. fakes/muon",  5, 0.,  5.);
     hists_[Form("%s_fake_nvalsegs_end_permuo", label)] = outfile_->make<TH1F>(Form("%s_fake_nvalsegs_end_permuo", label), ";number of valid endcap segments;n. fakes/muon" ,  5, 0.,  5.);
   }
-
 }
 
-
-MuonGeneralAnalyzer::~MuonGeneralAnalyzer() { 
-  if(debugPrint) std::cout << "Inside Destructor" << std::endl;
-}
-
-
-//
-// member functions
-//
-
-// ------------ method called for each event  ------------
-void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
-  using namespace edm;
-  using std::string;
-
-  if(debugPrint || outputPrint) std::cout << "============================  Inside analyze " << processTag_ << ' '
-					  // << iEvent.id().run() << "  "
-					  // << iEvent.id().luminosityBlock() << "  "
-					  // << iEvent.id().event() << "  "
-					  << "============================" << std::endl;
-
-  hists_["evt_muo_counter"]->Fill(1.);
-
-  edm::Handle<std::vector<PileupSummaryInfo> > puInfoH;
-  iEvent.getByToken(puInfoTag_,puInfoH);
-  int npuOOT(0),npuIT(0),npuOOTm1(0);
-  if(puInfoH.isValid()) {
-    for(std::vector<PileupSummaryInfo>::const_iterator it=puInfoH->begin(); it!=puInfoH->end(); ++it) {
-      if(it->getBunchCrossing()==0) {
-	npuIT += it->getPU_NumInteractions();
-      }
-      else {
-	npuOOT += it->getPU_NumInteractions();
-	//npuOOT = 0; // TMP: figure out how to use this!!!
-      }
-
-      if(it->getBunchCrossing()<0)
-	npuOOTm1 += it->getPU_NumInteractions();
-    }
-  }
-
-  // GenParticles 
-  edm::Handle<reco::GenParticleCollection> genParts; 
-  iEvent.getByToken(gpToken_, genParts); 
-  if(!genParts.isValid()) {
-    throw cms::Exception("GenParticleCollection not valid!"); 
-  } 
-  else {
-    if(debugPrint) std::cout << "Found GenParticleCollection! (" << genParts->size() << ')' << std::endl;
-  }
-
-  // // Muons (all)
-  // edm::Handle<reco::MuonCollection> muons;
-  // iEvent.getByToken(muonToken_, muons);
-  // if(!muons.isValid()) {
-  //   if(outputPrint || debugPrint) std::cout << "Muon collection not valid!" << std::endl;
-  //   return;
-  // }
-  // else {
-  //   if(debugPrint) std::cout << "Found Muon collection!" << std::endl;
-  // }
-  
-  // GL tracks
-  edm::Handle<reco::TrackCollection> glTracks;
-  iEvent.getByToken(globalTracksToken_, glTracks);
-  if(!glTracks.isValid()) {
-    if(outputPrint || debugPrint) std::cout << "GLOBAL track collection not valid!" << std::endl;
-    return;
-  }
-  else {
-    if(debugPrint) std::cout << "Found GLOBAL track collection! (" << glTracks->size() << ')' << std::endl;
-  }
-
-  // SA tracks
-  edm::Handle<reco::TrackCollection> saTracks;
-  iEvent.getByToken(saTracksToken_, saTracks);
-  if(!saTracks.isValid()) {
-    if(outputPrint || debugPrint) std::cout << "SA track collection not valid!" << std::endl;
-    return;
-  }
-  else {
-    if(debugPrint) std::cout << "Found SA track collection! (" << saTracks->size() << ')' << std::endl;
-  }
-
-  // SA-updated at vertex tracks
-  edm::Handle<reco::TrackCollection> saUpdTracks;
-  iEvent.getByToken(saUpdTracksToken_, saUpdTracks);
-  if(!saUpdTracks.isValid()) {
-    if(outputPrint || debugPrint) std::cout << "SA Updated track collection not valid!" << std::endl;
-    return;
-  }
-  else {
-    if(debugPrint) std::cout << "Found SA Updated track collection! (" << saUpdTracks->size() << ')' << std::endl;
-  }
-  
-  // ################################################################################
-  for(auto sa : *saTracks){
-    for(auto saUpd : *saUpdTracks){
-      auto tuple_hits = commonHitCounter.countMatchingHits(sa, saUpd, true);
-      std::cout << "tuple_hits: " << std::get<0>(tuple_hits) << ' ' << std::get<1>(tuple_hits) << ' ' << std::get<2>(tuple_hits) << '\n';
-    }
-  }
-  return;
-  // ################################################################################
-
-  //std::cout << "--- 1" << std::endl;
-  reco::TrackCollection sa0hitsTracks;
-  for(auto trk : *saTracks){
-    if(trk.hitPattern().numberOfValidMuonHits() == 0)
-      sa0hitsTracks.push_back(trk);
-  }
-
-  reco::TrackCollection saupd0hitsTracks;
-  for(auto trk : *saUpdTracks){
-    if(trk.hitPattern().numberOfValidMuonHits() == 0)
-      saupd0hitsTracks.push_back(trk);
-  }
-  
-  reco::TrackCollection gl0hitsTracks;
-  for(auto trk : *glTracks){
-    if(trk.hitPattern().numberOfValidMuonHits() == 0)
-      gl0hitsTracks.push_back(trk);
-  }
-  
-  std::vector<bool>    saMask(   saTracks->size(), false);
-  std::vector<bool> saupdMask(saUpdTracks->size(), false);
-  std::vector<bool>    glMask(   glTracks->size(), false);
-  
-  //std::cout << "--- 2" << std::endl;
-  
-  reco::TrackCollection genMuonTracks;
-  // Fill plots
-  for(auto gp : *genParts) {
-    if(abs(gp.pdgId())!=13) continue;
-    // Denominator
-    float geneta  = gp.eta();
-    float genaeta = fabs(geneta);
-    if(genaeta>2.4) continue;
-    hists_["evt_muo_counter"]->Fill(2.);
-    float genpt = gp.pt();
-    float genphi = gp.phi();
-    
-    hists_["eff_den_aeta" ]->Fill(genaeta);
-    hists_["eff_den_pt"   ]->Fill(genpt);
-    hists_["eff_den_phi"  ]->Fill(genphi);
-    hists_["eff_den_pu"   ]->Fill(npuIT);
-    hists_["eff_den_allpu"]->Fill(npuIT+npuOOT);
-
-    //std::cout << "--- 2.1" << std::endl;
-    
-    // SA tracks
-    int saIdx = fillMatchedPlots("sa"        , *saTracks       , gp, npuOOT, npuIT);
-    if(saIdx >= 0)
-      saMask.at(saIdx) = true;
-    // std::cout << "sa: "<<saIdx<<std::endl;
-    // fillMatchedPlots("sa0hits"   , sa0hitsTracks  , gp, npuOOT, npuIT);
-    
-    // SA-updated tracks
-    int saupdIdx = fillMatchedPlots("saupd"     , *saUpdTracks    , gp, npuOOT, npuIT);
-    if(saupdIdx >= 0)
-      saupdMask.at(saupdIdx) = true;
-    // std::cout << "saupd: "<<saupdIdx<<std::endl;
-    // fillMatchedPlots("saupd0hits", saupd0hitsTracks, gp, npuOOT, npuIT);
-
-    // GLOBAL tracks
-    int glIdx = fillMatchedPlots("gl"        , *glTracks       , gp, npuOOT, npuIT);
-    if(glIdx >= 0)
-      glMask.at(glIdx) = true;
-    // std::cout << "gl: "<<glIdx<<std::endl;
-    // fillMatchedPlots("gl0hits"   , gl0hitsTracks   , gp, npuOOT, npuIT);
-  }
-  
-  fillFakePlots("sa"   , *saTracks   , saMask   , npuOOT, npuIT);
-  fillFakePlots("saupd", *saUpdTracks, saupdMask, npuOOT, npuIT);
-  fillFakePlots("gl"   , *glTracks   , glMask   , npuOOT, npuIT);
-
-  return;
-}
-
-
-// ------------ method called once each job just before starting event loop  ------------
-void MuonGeneralAnalyzer::beginJob() {
-}
-
-// ------------ method called once each job just after ending the event loop  ------------
-void MuonGeneralAnalyzer::endJob() {
-  endPlots("sa");
-  endPlots("sa0hits");
-  endPlots("saupd");
-  endPlots("saupd0hits");
-  endPlots("gl");
-  endPlots("gl0hits");
-} 
-
-// ------------ method called when starting to processes a run  ------------
-void MuonGeneralAnalyzer::beginRun(edm::Run const& iRun, edm::EventSetup const& iSetup) {
-  // edm::ESHandle<TrackAssociatorBase> theAssociator;
-  // for(size_t w=0; w<associatorNames.size(); ++w) { 
-  //   iSetup.get<TrackAssociatorRecord>().get(associatorNames[w], theAssociator); 
-  //   if(theAssociator.isValid()) associators.push_back(theAssociator.product()); 
-  // } 
-  // if(associators.size()==0) { 
-  //   TString assonames; 
-  //   for(size_t w=0; w<associatorNames.size(); ++w) assonames += (associatorNames[w]+" "); 
-  //   throw cms::Exception("No Associators found")
-  //     << "Cannot find any of the following associators: " << assonames.Data(); 
-  // } 
-} // end of beginRun
-
-
-// ------------ method called when ending the processing of a run  ------------
-void MuonGeneralAnalyzer::endRun(edm::Run const&, edm::EventSetup const&) {
-}
-
-
-// ------------ method called when starting to processes a luminosity block  ------------
-void MuonGeneralAnalyzer::beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&) {
-}
-
-// ------------ method called when ending the processing of a luminosity block  ------------
-void MuonGeneralAnalyzer::endLuminosityBlock(edm::LuminosityBlock const& iLumiBlock, edm::EventSetup const&) {
-}
 
 int MuonGeneralAnalyzer::fillMatchedPlots(const char* label, const reco::TrackCollection& trackCollection, const reco::GenParticle& gp, int npuOOT, int npuIT){
   float geneta    = gp.eta();
