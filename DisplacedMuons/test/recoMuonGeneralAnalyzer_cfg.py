@@ -17,38 +17,27 @@ process.load('Configuration.StandardSequences.FrontierConditions_GlobalTag_cff')
 from Configuration.AlCa.GlobalTag import GlobalTag 
 process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:run3_mc_FULL', '')
 
-process.muonAnalysisOLD = cms.EDAnalyzer('MuonGeneralAnalyzer', 
+process.muonAnalysis = cms.EDAnalyzer('MuonGeneralAnalyzer', 
                                          verbose          = cms.untracked.bool(True),
                                          printOutput      = cms.untracked.bool(False),
                                          puInfoTag        = cms.InputTag('addPileupInfo'),
                                          gpCollectionTag  = cms.InputTag('genParticles'),
                                          muonTag          = cms.InputTag('muons'),
-                                         saTracksTag      = cms.InputTag('standAloneMuons::RECO'),
-                                         saUpdTracksTag   = cms.InputTag('standAloneMuons:UpdatedAtVtx:RECO'),
-                                         globalTracks     = cms.InputTag('globalMuons::RECO'),
+                                         oldSaTracksTag   = cms.InputTag('standAloneMuons::RECO'),
+                                         oldSaUpdTracksTag= cms.InputTag('standAloneMuons:UpdatedAtVtx:RECO'),
+                                         oldGlobalTracks  = cms.InputTag('globalMuons::RECO'),
+                                         newSaTracksTag   = cms.InputTag('standAloneMuons::RESTA'),
+                                         newSaUpdTracksTag= cms.InputTag('standAloneMuons:UpdatedAtVtx:RESTA'),
+                                         newGlobalTracks  = cms.InputTag('globalMuons::RESTA'),
                                          genParticleMatch = cms.InputTag('muonSimClassifier:toPrimaries:RECO'),
                                          hitCounterParams = cms.untracked.PSet(
                                              debug = cms.untracked.bool(True)
                                          )
                                      )
 
-process.muonAnalysisNEW = cms.EDAnalyzer('MuonGeneralAnalyzer', 
-                                         verbose          = cms.untracked.bool(True),
-                                         printOutput      = cms.untracked.bool(False),
-                                         puInfoTag        = cms.InputTag('addPileupInfo'),
-                                         gpCollectionTag  = cms.InputTag('genParticles'),
-                                         muonTag          = cms.InputTag('muons'),
-                                         saTracksTag      = cms.InputTag('standAloneMuons::RESTA'),
-                                         saUpdTracksTag   = cms.InputTag('standAloneMuons:UpdatedAtVtx:RESTA'),
-                                         globalTracks     = cms.InputTag('globalMuons::RESTA'),
-                                         hitCounterParams = cms.untracked.PSet(
-                                             debug = cms.untracked.bool(True)
-                                         )
-                                     )
 
 process.p = cms.Path(
-    process.muonAnalysisOLD
-    + process.muonAnalysisNEW
+    process.muonAnalysis
 )
 
 # setattr(process,     'muonAnalysisOLD', muonAnalysisOLD)

@@ -87,15 +87,16 @@ class MuonGeneralAnalyzer : public edm::one::EDAnalyzer<> {
   struct AssociationRow {
     // edm::Ref<reco::MuonCollection>
     reco::MuonRef  muon; // muon with inner track
+    reco::TrackRef inner;
+    reco::TrackRef outer;
+    reco::TrackRef global;
+    reco::TrackRef oldSda;
+    reco::TrackRef oldSdaUpd;
+    reco::TrackRef oldGl;
+    reco::TrackRef newSda;
+    reco::TrackRef newSdaUpd;
+    reco::TrackRef newGl;
     reco::GenParticleRef genMuon;
-    reco::TrackRef outerTrack;
-    reco::TrackRef sdaTrack;
-    reco::TrackRef sdaUpdTrack;
-    
-    // reco::TrackRef oldSdaTrack;
-    // reco::TrackRef oldSdaUpdTrack;
-    // reco::TrackRef newSdaTrack;
-    // reco::TrackRef newSdaUpdTrack;
   };
   
 public:
@@ -136,9 +137,12 @@ private:
   edm::EDGetTokenT<std::vector<PileupSummaryInfo> > puInfoTag_;
   edm::EDGetTokenT<reco::GenParticleCollection> gpToken_;
   edm::EDGetTokenT<reco::MuonCollection> muonToken_;
-  edm::EDGetTokenT<reco::TrackCollection> saTracksToken_;
-  edm::EDGetTokenT<reco::TrackCollection> saUpdTracksToken_;
-  edm::EDGetTokenT<reco::TrackCollection> globalTracksToken_;
+  edm::EDGetTokenT<reco::TrackCollection> oldSaTracksToken_;
+  edm::EDGetTokenT<reco::TrackCollection> oldSaUpdTracksToken_;
+  edm::EDGetTokenT<reco::TrackCollection> oldGlobalTracksToken_;
+  edm::EDGetTokenT<reco::TrackCollection> newSaTracksToken_;
+  edm::EDGetTokenT<reco::TrackCollection> newSaUpdTracksToken_;
+  edm::EDGetTokenT<reco::TrackCollection> newGlobalTracksToken_;
   
   bool useGenMatchMap_;
   edm::EDGetTokenT<reco::GenParticleMatch> genParticleMatchToken_;
@@ -163,13 +167,16 @@ private:
 // constructors and destructor
 //
 MuonGeneralAnalyzer::MuonGeneralAnalyzer(const edm::ParameterSet& iConfig) :
-  processTag_(iConfig.getParameter<edm::InputTag>("saTracksTag").process()),
+  processTag_(""),  // (iConfig.getParameter<edm::InputTag>("saTracksTag").process()),
   puInfoTag_( consumes<std::vector<PileupSummaryInfo> >(iConfig.getParameter<edm::InputTag>("puInfoTag")) ),
   gpToken_( consumes<reco::GenParticleCollection>(iConfig.getParameter<edm::InputTag>("gpCollectionTag")) ),
   muonToken_(        consumes<reco::MuonCollection> (iConfig.getParameter<edm::InputTag>("muonTag"       )) ),
-  saTracksToken_(    consumes<reco::TrackCollection>(iConfig.getParameter<edm::InputTag>("saTracksTag"   )) ),
-  saUpdTracksToken_( consumes<reco::TrackCollection>(iConfig.getParameter<edm::InputTag>("saUpdTracksTag")) ),
-  globalTracksToken_(consumes<reco::TrackCollection>(iConfig.getParameter<edm::InputTag>("globalTracks"  )) ),
+  oldSaTracksToken_(    consumes<reco::TrackCollection>(iConfig.getParameter<edm::InputTag>("oldSaTracksTag"   )) ),
+  oldSaUpdTracksToken_( consumes<reco::TrackCollection>(iConfig.getParameter<edm::InputTag>("oldSaUpdTracksTag")) ),
+  oldGlobalTracksToken_(consumes<reco::TrackCollection>(iConfig.getParameter<edm::InputTag>("oldGlobalTracks"  )) ),
+  newSaTracksToken_(    consumes<reco::TrackCollection>(iConfig.getParameter<edm::InputTag>("newSaTracksTag"   )) ),
+  newSaUpdTracksToken_( consumes<reco::TrackCollection>(iConfig.getParameter<edm::InputTag>("newSaUpdTracksTag")) ),
+  newGlobalTracksToken_(consumes<reco::TrackCollection>(iConfig.getParameter<edm::InputTag>("newGlobalTracks"  )) ),
   
   useGenMatchMap_(iConfig.existsAs<edm::InputTag>("genParticleMatch")),
   
@@ -275,38 +282,57 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
   }
   
   // GL tracks
-  edm::Handle<reco::TrackCollection> glTracks;
-  iEvent.getByToken(globalTracksToken_, glTracks);
-  if(!glTracks.isValid()) {
-    if(outputPrint || debugPrint) std::cout << "GLOBAL track collection not valid!" << std::endl;
+  edm::Handle<reco::TrackCollection> oldGlTracks;
+  iEvent.getByToken(oldGlobalTracksToken_, oldGlTracks);
+  if(!oldGlTracks.isValid()) {
+    if(outputPrint || debugPrint) std::cout << "OLD GLOBAL track collection not valid!" << std::endl;
     return;
   }
-  else {
-    if(debugPrint) std::cout << "Found GLOBAL track collection! (" << glTracks->size() << ')' << std::endl;
+  else if(debugPrint) std::cout << "Found OLD GLOBAL track collection! (" << oldGlTracks->size() << ')' << std::endl;
+  
+  edm::Handle<reco::TrackCollection> newGlTracks;
+  iEvent.getByToken(newGlobalTracksToken_, newGlTracks);
+  if(!newGlTracks.isValid()) {
+    if(outputPrint || debugPrint) std::cout << "NEW GLOBAL track collection not valid!" << std::endl;
+    return;
   }
+  else if(debugPrint) std::cout << "Found NEW GLOBAL track collection! (" << newGlTracks->size() << ')' << std::endl;
 
   // SA tracks
-  edm::Handle<reco::TrackCollection> saTracks;
-  iEvent.getByToken(saTracksToken_, saTracks);
-  if(!saTracks.isValid()) {
-    if(outputPrint || debugPrint) std::cout << "SA track collection not valid!" << std::endl;
+  edm::Handle<reco::TrackCollection> oldSaTracks;
+  iEvent.getByToken(oldSaTracksToken_, oldSaTracks);
+  if(!oldSaTracks.isValid()) {
+    if(outputPrint || debugPrint) std::cout << "OLD SA track collection not valid!" << std::endl;
     return;
   }
-  else {
-    if(debugPrint) std::cout << "Found SA track collection! (" << saTracks->size() << ')' << std::endl;
+  else if(debugPrint) std::cout << "Found OLD SA track collection! (" << oldSaTracks->size() << ')' << std::endl;
+  
+  edm::Handle<reco::TrackCollection> newSaTracks;
+  iEvent.getByToken(newSaTracksToken_, newSaTracks);
+  if(!newSaTracks.isValid()) {
+    if(outputPrint || debugPrint) std::cout << "NEW SA track collection not valid!" << std::endl;
+    return;
   }
+  else if(debugPrint) std::cout << "Found NEW SA track collection! (" << newSaTracks->size() << ')' << std::endl;
 
   // SA-updated at vertex tracks
-  edm::Handle<reco::TrackCollection> saUpdTracks;
-  iEvent.getByToken(saUpdTracksToken_, saUpdTracks);
-  if(!saUpdTracks.isValid()) {
+  edm::Handle<reco::TrackCollection> oldSaUpdTracks;
+  iEvent.getByToken(oldSaUpdTracksToken_, oldSaUpdTracks);
+  if(!oldSaUpdTracks.isValid()) {
     if(outputPrint || debugPrint) std::cout << "SA Updated track collection not valid!" << std::endl;
     return;
   }
-  else {
-    if(debugPrint) std::cout << "Found SA Updated track collection! (" << saUpdTracks->size() << ')' << std::endl;
+  else if(debugPrint) std::cout << "Found SA Updated track collection! (" << oldSaUpdTracks->size() << ')' << std::endl;
+
+  edm::Handle<reco::TrackCollection> newSaUpdTracks;
+  iEvent.getByToken(newSaUpdTracksToken_, newSaUpdTracks);
+  if(!newSaUpdTracks.isValid()) {
+    if(outputPrint || debugPrint) std::cout << "SA Updated track collection not valid!" << std::endl;
+    return;
   }
-  
+  else if(debugPrint) std::cout << "Found SA Updated track collection! (" << newSaUpdTracks->size() << ')' << std::endl;
+
+
   // ################################################################################
   // // test
   // for(auto sa : *saTracks){
@@ -319,51 +345,70 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
   // ################################################################################
 
   //std::cout << "--- 1" << std::endl;
-  reco::TrackCollection sa0hitsTracks;
-  for(auto trk : *saTracks){
+  reco::TrackCollection oldSa0hitsTracks;
+  for(auto trk : *oldSaTracks){
     if(trk.hitPattern().numberOfValidMuonHits() == 0)
-      sa0hitsTracks.push_back(trk);
+      oldSa0hitsTracks.push_back(trk);
   }
 
-  reco::TrackCollection saupd0hitsTracks;
-  for(auto trk : *saUpdTracks){
+  reco::TrackCollection oldSaUpd0hitsTracks;
+  for(auto trk : *oldSaUpdTracks){
     if(trk.hitPattern().numberOfValidMuonHits() == 0)
-      saupd0hitsTracks.push_back(trk);
+      oldSaUpd0hitsTracks.push_back(trk);
   }
   
   reco::TrackCollection gl0hitsTracks;
-  for(auto trk : *glTracks){
+  for(auto trk : *oldGlTracks){
     if(trk.hitPattern().numberOfValidMuonHits() == 0)
       gl0hitsTracks.push_back(trk);
   }
   
-  std::vector<bool>    saMask(   saTracks->size(), false);
-  std::vector<bool> saupdMask(saUpdTracks->size(), false);
-  std::vector<bool>    glMask(   glTracks->size(), false);
+  std::vector<bool>    oldSaMask(   oldSaTracks->size(), false);
+  std::vector<bool> oldSaUpdMask(oldSaUpdTracks->size(), false);
+  std::vector<bool>    oldGlMask(   oldGlTracks->size(), false);
   
   //std::cout << "--- 2" << std::endl;
 
   // ********************************************************************************
-  // Make individual associations
+  // Collections of trackrefs of the muons: match FROM
+  std::vector<reco::TrackRef> innerTrackRefs;
   std::vector<reco::TrackRef> outerTrackRefs;
-  outerTrackRefs.reserve(muons->size());
+  std::vector<reco::TrackRef> globalTrackRefs;
+  innerTrackRefs .reserve(muons->size());
+  outerTrackRefs .reserve(muons->size());
+  globalTrackRefs.reserve(muons->size());
   for(auto muon : *muons){
-    reco::TrackRef outerTrackRef = muon.outerTrack();
-    if(outerTrackRef.isNonnull())  // isAvailable()
-      outerTrackRefs.push_back(std::move(outerTrackRef));
+    reco::TrackRef innerTrackRef  = muon.innerTrack ();
+    reco::TrackRef outerTrackRef  = muon.outerTrack ();
+    reco::TrackRef globalTrackRef = muon.globalTrack();
+    if(innerTrackRef .isNonnull())
+      innerTrackRefs .push_back(std::move(innerTrackRef ));
+    if(outerTrackRef .isNonnull())  // isAvailable()
+      outerTrackRefs .push_back(std::move(outerTrackRef ));
+    if(globalTrackRef.isNonnull())
+      globalTrackRefs.push_back(std::move(globalTrackRef));
   }
   
-  std::vector<reco::TrackRef> saTrackRefs;
-  std::vector<reco::TrackRef> saUpdTrackRefs;
-  saTrackRefs   .reserve(saTracks   ->size());
-  saUpdTrackRefs.reserve(saUpdTracks->size());
-  for(unsigned int i = 0; i < saTracks->size()   ; ++i)
-    saTrackRefs   .push_back( reco::TrackRef(saTracks   , i) );
-  for(unsigned int i = 0; i < saUpdTracks->size(); ++i)
-    saUpdTrackRefs.push_back( reco::TrackRef(saUpdTracks, i) );
+  // Collections of trackrefs: match TO
+  // TODO: CommonHitCounter should be able to accept a TrackCollection
+  std::vector<reco::TrackRef> oldSaTrackRefs;
+  std::vector<reco::TrackRef> oldSaUpdTrackRefs;
+  std::vector<reco::TrackRef> oldGlTrackRefs;
+  oldSaTrackRefs   .reserve(oldSaTracks   ->size());
+  oldSaUpdTrackRefs.reserve(oldSaUpdTracks->size());
+  oldGlTrackRefs   .reserve(oldGlTracks   ->size());
+  for(unsigned int i = 0; i < oldSaTracks->size()   ; ++i)
+    oldSaTrackRefs   .push_back( reco::TrackRef(oldSaTracks   , i) );
+  for(unsigned int i = 0; i < oldSaUpdTracks->size(); ++i)
+    oldSaUpdTrackRefs.push_back( reco::TrackRef(oldSaUpdTracks, i) );
+  for(unsigned int i = 0; i < oldGlTracks->size()   ; ++i)
+    oldGlTrackRefs   .push_back( reco::TrackRef(oldGlTracks   , i) );
 
-  CommonHitCounter::map_type outerToSdA    = commonHitCounter.matchingTrackCollections(outerTrackRefs, saTrackRefs   );
-  CommonHitCounter::map_type outerToSdAUpd = commonHitCounter.matchingTrackCollections(outerTrackRefs, saUpdTrackRefs);
+  // Match all the tracks at once --> no duplicates
+  CommonHitCounter::map_type outerToOldSdA     = commonHitCounter.matchingTrackCollections(outerTrackRefs , oldSaTrackRefs   );
+  CommonHitCounter::map_type outerToOldSdAUpd  = commonHitCounter.matchingTrackCollections(outerTrackRefs , oldSaUpdTrackRefs);
+  CommonHitCounter::map_type globalToOldGl     = commonHitCounter.matchingTrackCollections(globalTrackRefs, oldGlTrackRefs   );
+  // CommonHitCounter::map_type innerToOldGl      = commonHitCounter.matchingTrackCollections(innerTrackRefs , oldGlTrackRefs   );
 
   // if(debugPrint){
   //   std::cout << ">>> Dumping outer>SdA map:\n";
@@ -381,40 +426,48 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
   for(unsigned int i = 0; i < muons->size(); ++i){
     AssociationRow row;
     row.muon = reco::MuonRef(muons, i);
-    row.outerTrack = muons->at(i).outerTrack(); // it->outerTrack(); // 
-    
+    row.inner  = muons->at(i).innerTrack();
+    row.outer  = muons->at(i).outerTrack();
+    row.global = muons->at(i).globalTrack();
+
     if(debugPrint)
       std::cout << "\tMuon "<<i<<":  itself: " << debugRef(row.muon);
 
-    if(row.outerTrack.isNonnull()){
+    if(row.outer.isNonnull()){
       if(debugPrint)
-      	std::cout << "  outer: " << Form("%lx", outerToSdA.hash_function()(row.outerTrack)) << debugRef(row.outerTrack);
+      	std::cout << "  outer: " << Form("%lx", outerToOldSdA.hash_function()(row.outer)) << debugRef(row.outer);
       
-      auto it_SdA    = outerToSdA   .find(row.outerTrack);
-      auto it_SdAUpd = outerToSdAUpd.find(row.outerTrack);
+      auto it_oldSdA    = outerToOldSdA   .find(row.outer);
+      auto it_oldSdAUpd = outerToOldSdAUpd.find(row.outer);
       
       if(debugPrint){
       	std::cout<<"  SdA = ";
-      	  if(it_SdA    == outerToSdA.end())
+      	  if(it_oldSdA    == outerToOldSdA.end())
       	    std::cout << "END";
       	  else{
-      	    std::cout << std::distance(outerToSdA.begin(), it_SdA) << " (";
-      	    if(it_SdA->second.isNonnull()) std::cout << it_SdA->second.key();
-      	    else                           std::cout << "NULL";
+      	    std::cout << std::distance(outerToOldSdA.begin(), it_oldSdA) << " (";
+      	    if(it_oldSdA->second.isNonnull()) std::cout << it_oldSdA->second.key();
+      	    else                              std::cout << "NULL";
       	    std::cout << ')';
       	  }
       }
       
-      row.sdaTrack    = it_SdA    != outerToSdA.end()    ? it_SdA   ->second : reco::TrackRef(saTracks.id()   );
-      row.sdaUpdTrack = it_SdAUpd != outerToSdAUpd.end() ? it_SdAUpd->second : reco::TrackRef(saUpdTracks.id());
+      row.oldSda    = it_oldSdA    != outerToOldSdA.end()    ? it_oldSdA   ->second : reco::TrackRef(oldSaTracks.id()   );
+      row.oldSdaUpd = it_oldSdAUpd != outerToOldSdAUpd.end() ? it_oldSdAUpd->second : reco::TrackRef(oldSaUpdTracks.id());
     }
-    else{
-      if(debugPrint)
-    	std::cout << "  outer is null!";
-    }
+    else if(debugPrint) std::cout << "  outer is null!";
+    if(debugPrint) std::cout << '\n';
     
-    if(debugPrint)
-      std::cout << '\n';
+    // Global
+    if(row.muon->globalTrack().isNonnull()){
+      CommonHitCounter::map_type::const_iterator it_oldGl;
+      if     ( (it_oldGl = globalToOldGl.find(row.muon->globalTrack())) != globalToOldGl.end() )
+	row.oldGl = it_oldGl->second;  // First try matching global tracks
+      // else if( (it_oldGl = innerToOldGl .find(row.muon->globalTrack())) != innerToOldGl .end() )
+      // 	row.oldGl = it_oldGl->second;  // Then try matching the inner part of the global
+      else
+	row.oldGl = reco::TrackRef(oldGlTracks.id());
+    }
     
     // Gen muon
     float muEta = row.muon->eta();
@@ -431,14 +484,20 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
   }
   
   
-  std::cout << Form("%6s | %6s | %6s | %6s | %6s\n", "muon", "genMu", "outer", "SdA", "SdAUpd");
+  std::cout << Form("%6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %6s | %s\n", "muon", "genMu", "inner", "outer", "global", "oldSA", "newSA", "oldSaU", "newSaU", "oldGl", "newGl");
   for(const AssociationRow& row : associationTable)
-    std::cout << Form("%6d | %6d | %6s | %6d | %6d\n",
+    std::cout << Form("%6d | %6d | %6s | %6s | %6s | %6d | %6d | %6d | %6d | %6d | %6d \n",
   		      row.muon.key(),
   		      row.genMuon.isNonnull() ? row.genMuon.key() : -1,
-  		      row.outerTrack.isNonnull() ? "OK" : "-",
-  		      row.sdaTrack   .key(), // row.sdaTrack   .isNonnull() ? row.sdaTrack   .key() : -1,
-  		      row.sdaUpdTrack.key()  // row.sdaUpdTrack.isNonnull() ? row.sdaUpdTrack.key() : -1
+		      row.inner .isNonnull() ? "OK" : "-",
+  		      row.outer .isNonnull() ? "OK" : "-",
+		      row.global.isNonnull() ? "OK" : "-",
+  		      row.oldSda   .key(), // row.sdaTrack   .isNonnull() ? row.sdaTrack   .key() : -1,
+  		      row.newSda   .key(),
+		      row.oldSdaUpd.key(),
+		      row.newSdaUpd.key(),
+		      row.oldGl    .key(),
+		      row.newGl    .key()
   		      );
   std::cout<<"--------------------------------------------------------------------------------\n";
 
@@ -465,30 +524,30 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
     //std::cout << "--- 2.1" << std::endl;
     
     // SA tracks
-    int saIdx = fillMatchedPlots("sa"        , *saTracks       , gp, npuOOT, npuIT);
+    int saIdx = fillMatchedPlots("sa"        , *oldSaTracks       , gp, npuOOT, npuIT);
     if(saIdx >= 0)
-      saMask.at(saIdx) = true;
+      oldSaMask.at(saIdx) = true;
     // std::cout << "sa: "<<saIdx<<std::endl;
     // fillMatchedPlots("sa0hits"   , sa0hitsTracks  , gp, npuOOT, npuIT);
     
     // SA-updated tracks
-    int saupdIdx = fillMatchedPlots("saupd"     , *saUpdTracks    , gp, npuOOT, npuIT);
+    int saupdIdx = fillMatchedPlots("saupd"  , *oldSaUpdTracks    , gp, npuOOT, npuIT);
     if(saupdIdx >= 0)
-      saupdMask.at(saupdIdx) = true;
+      oldSaUpdMask.at(saupdIdx) = true;
     // std::cout << "saupd: "<<saupdIdx<<std::endl;
     // fillMatchedPlots("saupd0hits", saupd0hitsTracks, gp, npuOOT, npuIT);
 
     // GLOBAL tracks
-    int glIdx = fillMatchedPlots("gl"        , *glTracks       , gp, npuOOT, npuIT);
+    int glIdx = fillMatchedPlots("gl"        , *oldGlTracks       , gp, npuOOT, npuIT);
     if(glIdx >= 0)
-      glMask.at(glIdx) = true;
+      oldGlMask.at(glIdx) = true;
     // std::cout << "gl: "<<glIdx<<std::endl;
     // fillMatchedPlots("gl0hits"   , gl0hitsTracks   , gp, npuOOT, npuIT);
   }
   
-  fillFakePlots("sa"   , *saTracks   , saMask   , npuOOT, npuIT);
-  fillFakePlots("saupd", *saUpdTracks, saupdMask, npuOOT, npuIT);
-  fillFakePlots("gl"   , *glTracks   , glMask   , npuOOT, npuIT);
+  fillFakePlots("sa"   , *oldSaTracks   , oldSaMask   , npuOOT, npuIT);
+  fillFakePlots("saupd", *oldSaUpdTracks, oldSaUpdMask, npuOOT, npuIT);
+  fillFakePlots("gl"   , *oldGlTracks   , oldGlMask   , npuOOT, npuIT);
 
   return;
 }
