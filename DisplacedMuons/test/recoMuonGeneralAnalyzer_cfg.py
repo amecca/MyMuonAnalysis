@@ -26,7 +26,10 @@ process.muonAnalysisOLD = cms.EDAnalyzer('MuonGeneralAnalyzer',
                                          saTracksTag      = cms.InputTag('standAloneMuons::RECO'),
                                          saUpdTracksTag   = cms.InputTag('standAloneMuons:UpdatedAtVtx:RECO'),
                                          globalTracks     = cms.InputTag('globalMuons::RECO'),
-                                         genParticleMatch = cms.InputTag('muonSimClassifier:toPrimaries:RECO')
+                                         genParticleMatch = cms.InputTag('muonSimClassifier:toPrimaries:RECO'),
+                                         hitCounterParams = cms.untracked.PSet(
+                                             debug = cms.untracked.bool(True)
+                                         )
                                      )
 
 process.muonAnalysisNEW = cms.EDAnalyzer('MuonGeneralAnalyzer', 
@@ -37,7 +40,10 @@ process.muonAnalysisNEW = cms.EDAnalyzer('MuonGeneralAnalyzer',
                                          muonTag          = cms.InputTag('muons'),
                                          saTracksTag      = cms.InputTag('standAloneMuons::RESTA'),
                                          saUpdTracksTag   = cms.InputTag('standAloneMuons:UpdatedAtVtx:RESTA'),
-                                         globalTracks     = cms.InputTag('globalMuons::RESTA')
+                                         globalTracks     = cms.InputTag('globalMuons::RESTA'),
+                                         hitCounterParams = cms.untracked.PSet(
+                                             debug = cms.untracked.bool(True)
+                                         )
                                      )
 
 process.p = cms.Path(

@@ -117,6 +117,9 @@ private:
   int fillMatchedPlots(const char* label, const reco::TrackCollection& trackCollection, const reco::GenParticle& gp, int npuOOT, int npuIT);
   void fillFakePlots(const char* label, const reco::TrackCollection& trackCollection, const std::vector<bool>& mask, int npuOOT, int npuIT);
   void endPlots(const char* label);
+  template <class T> std::string debugRef(const edm::Ref<T>
+					  // , size_t (*hashFn)(const Ref<T>&)
+					  ) const;
 
   // ----------member data ---------------------------
   
@@ -198,6 +201,20 @@ MuonGeneralAnalyzer::~MuonGeneralAnalyzer() {
 //
 // member functions
 //
+template <class T>
+std::string MuonGeneralAnalyzer::debugRef(const edm::Ref<T> ref
+					  // , size_t (*hashFn)(const Ref<T>&)
+					  ) const{
+  std::string result (Form(
+			   "(process: %x, product: %x, key: %x)",
+			   // hashFn(ref),
+			   ref.id().processIndex(),
+			   ref.id().productIndex(),
+			   ref.key()
+			   ));
+  return result;
+}
+
 
 // ------------ method called for each event  ------------
 void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
@@ -291,14 +308,14 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
   }
   
   // ################################################################################
-  // test
-  for(auto sa : *saTracks){
-    for(auto saUpd : *saUpdTracks){
-      auto tuple_hits = commonHitCounter.countMatchingHits(sa, saUpd, true);
-      std::cout << "tuple_hits: " << std::get<0>(tuple_hits) << ' ' << std::get<1>(tuple_hits) << ' ' << std::get<2>(tuple_hits) << '\n';
-    }
-  }
-  return;
+  // // test
+  // for(auto sa : *saTracks){
+  //   for(auto saUpd : *saUpdTracks){
+  //     auto tuple_hits = commonHitCounter.countMatchingHits(sa, saUpd, true);
+  //     std::cout << "tuple_hits: " << std::get<0>(tuple_hits) << ' ' << std::get<1>(tuple_hits) << ' ' << std::get<2>(tuple_hits) << '\n';
+  //   }
+  // }
+  // return;
   // ################################################################################
 
   //std::cout << "--- 1" << std::endl;
@@ -325,43 +342,90 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
   std::vector<bool>    glMask(   glTracks->size(), false);
   
   //std::cout << "--- 2" << std::endl;
-  
+
   // ********************************************************************************
   // Make individual associations
-  reco::TrackCollection outerTracks;
-  outerTracks.reserve(muons->size());
+  std::vector<reco::TrackRef> outerTrackRefs;
+  outerTrackRefs.reserve(muons->size());
   for(auto muon : *muons){
-    reco::TrackRef outerTrack = muon.outerTrack();
-    if(outerTrack.isNonnull())  // isAvailable()
-      outerTracks.push_back(*outerTrack);
+    reco::TrackRef outerTrackRef = muon.outerTrack();
+    if(outerTrackRef.isNonnull())  // isAvailable()
+      outerTrackRefs.push_back(std::move(outerTrackRef));
   }
-
-  CommonHitCounter::map_type outerToSdA    = commonHitCounter.matchingTrackCollections(outerTracks, *saTracks   );
-  CommonHitCounter::map_type outerToSdAUpd = commonHitCounter.matchingTrackCollections(outerTracks, *saUpdTracks);
   
+  std::vector<reco::TrackRef> saTrackRefs;
+  std::vector<reco::TrackRef> saUpdTrackRefs;
+  saTrackRefs   .reserve(saTracks   ->size());
+  saUpdTrackRefs.reserve(saUpdTracks->size());
+  for(unsigned int i = 0; i < saTracks->size()   ; ++i)
+    saTrackRefs   .push_back( reco::TrackRef(saTracks   , i) );
+  for(unsigned int i = 0; i < saUpdTracks->size(); ++i)
+    saUpdTrackRefs.push_back( reco::TrackRef(saUpdTracks, i) );
+
+  CommonHitCounter::map_type outerToSdA    = commonHitCounter.matchingTrackCollections(outerTrackRefs, saTrackRefs   );
+  CommonHitCounter::map_type outerToSdAUpd = commonHitCounter.matchingTrackCollections(outerTrackRefs, saUpdTrackRefs);
+
+  // if(debugPrint){
+  //   std::cout << ">>> Dumping outer>SdA map:\n";
+  //   for(auto it : outerToSdA)
+  //     std::cout << '\t' 
+  // 		<< Form("%lx", outerToSdA.hash_function()(it.first)) << ' ' << debugRef(it.first ) << "  " 
+  // 		<< Form("%lx", outerToSdA.hash_function()(it.first)) << ' ' << debugRef(it.second)
+  // 		<< '\n';    
+  // }
+
   // Contruct the table 
+  if(debugPrint) std::cout << ">>> building AssociationTable:\n";
   std::vector<AssociationRow> associationTable;
   associationTable.reserve(muons->size());
   for(unsigned int i = 0; i < muons->size(); ++i){
     AssociationRow row;
     row.muon = reco::MuonRef(muons, i);
-    row.outerTrack = row.muon->outerTrack();
+    row.outerTrack = muons->at(i).outerTrack(); // it->outerTrack(); // 
+    
+    if(debugPrint)
+      std::cout << "\tMuon "<<i<<":  itself: " << debugRef(row.muon);
 
     if(row.outerTrack.isNonnull()){
+      if(debugPrint)
+      	std::cout << "  outer: " << Form("%lx", outerToSdA.hash_function()(row.outerTrack)) << debugRef(row.outerTrack);
+      
       auto it_SdA    = outerToSdA   .find(row.outerTrack);
       auto it_SdAUpd = outerToSdAUpd.find(row.outerTrack);
-      row.sdaTrack    = it_SdA    != outerToSdA.end()    ? it_SdA->val    : reco::TrackRef(saTracks.id()   );
-      row.sdaUpdTrack = it_SdAUpd != outerToSdAUpd.end() ? it_SdAUpd->val : reco::TrackRef(saUpdTracks.id());
+      
+      if(debugPrint){
+      	std::cout<<"  SdA = ";
+      	  if(it_SdA    == outerToSdA.end())
+      	    std::cout << "END";
+      	  else{
+      	    std::cout << std::distance(outerToSdA.begin(), it_SdA) << " (";
+      	    if(it_SdA->second.isNonnull()) std::cout << it_SdA->second.key();
+      	    else                           std::cout << "NULL";
+      	    std::cout << ')';
+      	  }
+      }
+      
+      row.sdaTrack    = it_SdA    != outerToSdA.end()    ? it_SdA   ->second : reco::TrackRef(saTracks.id()   );
+      row.sdaUpdTrack = it_SdAUpd != outerToSdAUpd.end() ? it_SdAUpd->second : reco::TrackRef(saUpdTracks.id());
     }
-
+    else{
+      if(debugPrint)
+    	std::cout << "  outer is null!";
+    }
+    
+    if(debugPrint)
+      std::cout << '\n';
+    
+    // Gen muon
     float muEta = row.muon->eta();
     float muPhi = row.muon->phi();
     auto it_closestGen = std::min_element(genMuons.begin(), genMuons.end(), [muEta, muPhi](const reco::GenParticle& a, const reco::GenParticle& b) {
 	return deltaR(muEta, muPhi, a.eta(), a.phi()) < deltaR(muEta, muPhi, b.eta(), b.phi());
       } );
-    row.genMuon = it_closestGen != genMuons.end() && deltaR(muEta, muPhi, it_closestGen->eta(), it_closestGen->phi()) < 0.2 ? 
-      reco::GenParticleRef(&genMuons, std::distance(genMuons.begin(), it_closestGen)) : 
-      reco::GenParticleRef();
+    if(it_closestGen != genMuons.end() && deltaR(muEta, muPhi, it_closestGen->eta(), it_closestGen->phi()) < 0.2)
+      row.genMuon = reco::GenParticleRef(&genMuons, std::distance(genMuons.begin(), it_closestGen));
+    else
+      row.genMuon = reco::GenParticleRef();
 
     associationTable.push_back(std::move(row));
   }
@@ -370,13 +434,14 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
   std::cout << Form("%6s | %6s | %6s | %6s | %6s\n", "muon", "genMu", "outer", "SdA", "SdAUpd");
   for(const AssociationRow& row : associationTable)
     std::cout << Form("%6d | %6d | %6s | %6d | %6d\n",
-		      row.muon.key(),
-		      row.genMuon.isNonnull() ? row.genMuon.key() : -1,
-		      row.outerTrack.isNonnull() ? "OK" : "-",
-		      row.sdaTrack   .isNonnull() ? row.sdaTrack   .key() : -1,
-		      row.sdaUpdTrack.isNonnull() ? row.sdaUpdTrack.key() : -1
-		      );
-  
+  		      row.muon.key(),
+  		      row.genMuon.isNonnull() ? row.genMuon.key() : -1,
+  		      row.outerTrack.isNonnull() ? "OK" : "-",
+  		      row.sdaTrack   .key(), // row.sdaTrack   .isNonnull() ? row.sdaTrack   .key() : -1,
+  		      row.sdaUpdTrack.key()  // row.sdaUpdTrack.isNonnull() ? row.sdaUpdTrack.key() : -1
+  		      );
+  std::cout<<"--------------------------------------------------------------------------------\n";
+
   // ********************************************************************************
   
   reco::TrackCollection genMuonTracks;

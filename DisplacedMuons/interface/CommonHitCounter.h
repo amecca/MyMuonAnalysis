@@ -41,17 +41,35 @@
 // class declaration
 //
 
-
 class CommonHitCounter {
  public:
+  template <class T>
+  struct HashRef {
+    // Hash for edm::Ref
+    // bytes  :   7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 
+    // content:    proc |  prod |      key
+    
+    static constexpr unsigned int bitshift_half    = (sizeof(size_t)/2) * 8;
+    static constexpr unsigned int bitshift_quarter = (sizeof(size_t)/4) * 8;
+    size_t operator()(const edm::Ref<T>& ref) const{
+      edm::ProductID id = ref.id();
+      unsigned short process = id.processIndex();  // bytes 7-6
+      unsigned short product = id.productIndex();  // bytes 5-4
+      unsigned int upper_half = (process << bitshift_quarter) + product; // bytes 7-4
+      // ref.key() is added without shift, and allowed to overflow into the upper half
+      return (size_t(upper_half) << bitshift_half) + ref.key();
+    }
+  };
+
   typedef std::pair<reco::TrackRef, float> TrackRefProb;
-  typedef edm::AssociationMap<edm::OneToOne<reco::TrackCollection, reco::TrackCollection>> map_type;
+  /* typedef edm::AssociationMap<edm::OneToOne<reco::TrackCollection, reco::TrackCollection>> map_type; */
+  typedef std::unordered_map<reco::TrackRef, reco::TrackRef, HashRef<reco::TrackCollection>> map_type;
 
   explicit CommonHitCounter(const edm::ParameterSet&);
 
   /* std::vector<TrackRefProb> matchingTracks(const reco::TrackRef& trackRefFrom, reco::TrackCollection& tracksTo, bool flatten) const; */
   std::vector<TrackRefProb> matchingTracks(const reco::Track&       trackFrom, reco::TrackCollection& tracksTo, bool flatten) const;
-  map_type matchingTrackCollections(const reco::TrackCollection&, const reco::TrackCollection&, bool flatten=false) const;
+  map_type matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten=false) const;
   
   std::tuple<int, int, int> countMatchingHits(const std::vector<TrackingRecHit*>&, const std::vector<TrackingRecHit*>&) const;
   std::tuple<int, int, int> countMatchingHits(const reco::Track& t1, const reco::Track& t2, bool flatten=false) const;
