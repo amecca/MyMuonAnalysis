@@ -106,7 +106,21 @@ CommonHitCounter::map_type CommonHitCounter::doMatchTrackCollections(std::vector
 }
 
 
-CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const reco::TrackCollection& tracksFrom, const reco::TrackCollection& tracksTo, bool flatten) const{
+CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const reco::TrackCollection&      tracksFrom, const reco::TrackCollection& tracksTo      , bool flatten) const{
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsFrom = prepareTrackRefToHits(tracksFrom, flatten);
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsTo   = prepareTrackRefToHits(tracksTo  , flatten);
+
+  return doMatchTrackCollections(trackToHitsFrom, trackToHitsTo);
+}
+
+CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const reco::TrackCollection&      tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten) const{
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsFrom = prepareTrackRefToHits(tracksFrom, flatten);
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsTo   = prepareTrackRefToHits(tracksTo  , flatten);
+
+  return doMatchTrackCollections(trackToHitsFrom, trackToHitsTo);
+}
+
+CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const reco::TrackCollection& tracksTo     , bool flatten) const{
   std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsFrom = prepareTrackRefToHits(tracksFrom, flatten);
   std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsTo   = prepareTrackRefToHits(tracksTo  , flatten);
 

@@ -381,34 +381,18 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
     reco::TrackRef innerTrackRef  = muon.innerTrack ();
     reco::TrackRef outerTrackRef  = muon.outerTrack ();
     reco::TrackRef globalTrackRef = muon.globalTrack();
-    if(innerTrackRef .isNonnull())
-      innerTrackRefs .push_back(std::move(innerTrackRef ));
-    if(outerTrackRef .isNonnull())  // isAvailable()
-      outerTrackRefs .push_back(std::move(outerTrackRef ));
-    if(globalTrackRef.isNonnull())
+    if(innerTrackRef.isAvailable()  && innerTrackRef.isNonnull() )
+      innerTrackRefs.push_back( std::move(innerTrackRef ));
+    if(outerTrackRef.isAvailable()  && outerTrackRef.isNonnull() )
+      outerTrackRefs.push_back( std::move(outerTrackRef ));
+    if(globalTrackRef.isAvailable() && globalTrackRef.isNonnull())
       globalTrackRefs.push_back(std::move(globalTrackRef));
   }
-  
-  // Collections of trackrefs: match TO
-  // TODO: CommonHitCounter should be able to accept a TrackCollection
-  std::vector<reco::TrackRef> oldSaTrackRefs;
-  std::vector<reco::TrackRef> oldSaUpdTrackRefs;
-  std::vector<reco::TrackRef> oldGlTrackRefs;
-  oldSaTrackRefs   .reserve(oldSaTracks   ->size());
-  oldSaUpdTrackRefs.reserve(oldSaUpdTracks->size());
-  oldGlTrackRefs   .reserve(oldGlTracks   ->size());
-  for(unsigned int i = 0; i < oldSaTracks->size()   ; ++i)
-    oldSaTrackRefs   .push_back( reco::TrackRef(oldSaTracks   , i) );
-  for(unsigned int i = 0; i < oldSaUpdTracks->size(); ++i)
-    oldSaUpdTrackRefs.push_back( reco::TrackRef(oldSaUpdTracks, i) );
-  for(unsigned int i = 0; i < oldGlTracks->size()   ; ++i)
-    oldGlTrackRefs   .push_back( reco::TrackRef(oldGlTracks   , i) );
 
-  // Match all the tracks at once --> no duplicates
-  CommonHitCounter::map_type outerToOldSdA     = commonHitCounter.matchingTrackCollections(outerTrackRefs , oldSaTrackRefs   );
-  CommonHitCounter::map_type outerToOldSdAUpd  = commonHitCounter.matchingTrackCollections(outerTrackRefs , oldSaUpdTrackRefs);
-  CommonHitCounter::map_type globalToOldGl     = commonHitCounter.matchingTrackCollections(globalTrackRefs, oldGlTrackRefs   );
-  // CommonHitCounter::map_type innerToOldGl      = commonHitCounter.matchingTrackCollections(innerTrackRefs , oldGlTrackRefs   );
+  CommonHitCounter::map_type outerToOldSdA     = commonHitCounter.matchingTrackCollections(outerTrackRefs , *oldSaTracks   );
+  CommonHitCounter::map_type outerToOldSdAUpd  = commonHitCounter.matchingTrackCollections(outerTrackRefs , *oldSaUpdTracks);
+  CommonHitCounter::map_type globalToOldGl     = commonHitCounter.matchingTrackCollections(globalTrackRefs, *oldGlTracks   );
+  // CommonHitCounter::map_type innerToOldGl      = commonHitCounter.matchingTrackCollections(innerTrackRefs , *oldGlTracks   );
 
   // if(debugPrint){
   //   std::cout << ">>> Dumping outer>SdA map:\n";

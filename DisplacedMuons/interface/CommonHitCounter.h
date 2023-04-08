@@ -71,6 +71,8 @@ class CommonHitCounter {
   /* std::vector<TrackRefProb> matchingTracks(const reco::TrackRef& trackRefFrom, reco::TrackCollection& tracksTo, bool flatten) const; */
   std::vector<TrackRefProb> matchingTracks(const reco::Track&          trackFrom , reco::TrackCollection&             tracksTo, bool flatten=false) const;
   map_type matchingTrackCollections(const reco::TrackCollection&       tracksFrom, const reco::TrackCollection&       tracksTo, bool flatten=false) const;
+  map_type matchingTrackCollections(const reco::TrackCollection&       tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten=false) const;
+  map_type matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const reco::TrackCollection&       tracksTo, bool flatten=false) const;
   map_type matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten=false) const;
   
   std::tuple<int, int, int> countMatchingHits(const std::vector<TrackingRecHit*>&, const std::vector<TrackingRecHit*>&) const;
