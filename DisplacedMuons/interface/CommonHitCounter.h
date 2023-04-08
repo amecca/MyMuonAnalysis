@@ -61,6 +61,7 @@ class CommonHitCounter {
     }
   };
 
+  typedef std::pair<reco::TrackRef, std::vector<TrackingRecHit*>> TrackrefHitsPair;
   typedef std::pair<reco::TrackRef, float> TrackRefProb;
   /* typedef edm::AssociationMap<edm::OneToOne<reco::TrackCollection, reco::TrackCollection>> map_type; */
   typedef std::unordered_map<reco::TrackRef, reco::TrackRef, HashRef<reco::TrackCollection>> map_type;
@@ -68,16 +69,22 @@ class CommonHitCounter {
   explicit CommonHitCounter(const edm::ParameterSet&);
 
   /* std::vector<TrackRefProb> matchingTracks(const reco::TrackRef& trackRefFrom, reco::TrackCollection& tracksTo, bool flatten) const; */
-  std::vector<TrackRefProb> matchingTracks(const reco::Track&       trackFrom, reco::TrackCollection& tracksTo, bool flatten) const;
+  std::vector<TrackRefProb> matchingTracks(const reco::Track&          trackFrom , reco::TrackCollection&             tracksTo, bool flatten=false) const;
+  map_type matchingTrackCollections(const reco::TrackCollection&       tracksFrom, const reco::TrackCollection&       tracksTo, bool flatten=false) const;
   map_type matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten=false) const;
   
   std::tuple<int, int, int> countMatchingHits(const std::vector<TrackingRecHit*>&, const std::vector<TrackingRecHit*>&) const;
-  std::tuple<int, int, int> countMatchingHits(const reco::Track& t1, const reco::Track& t2, bool flatten=false) const;
+  std::tuple<int, int, int> countMatchingHits(const reco::Track&    t1, const reco::Track& t2   , bool flatten=false) const;
   std::tuple<int, int, int> countMatchingHits(const reco::TrackRef& t1, const reco::TrackRef& t2, bool flatten=false) const{
     return countMatchingHits(t1, t2, flatten);
   }
 
  protected:
+  map_type doMatchTrackCollections(std::vector<TrackrefHitsPair>& trackToHitsFrom, std::vector<TrackrefHitsPair>& trackToHitsTo) const;
+
+  std::vector<TrackrefHitsPair> prepareTrackRefToHits(const std::vector<reco::TrackRef>& trackRefs, bool flatten) const;
+  std::vector<TrackrefHitsPair> prepareTrackRefToHits(const reco::TrackCollection& tracks         , bool flatten) const;
+
   std::vector<TrackingRecHit*> hitsFromTrack(const reco::Track& t, bool flatten=false) const;
   std::vector<TrackingRecHit*> flattenTrackingRecHits(const std::vector<TrackingRecHit*>&) const;
   

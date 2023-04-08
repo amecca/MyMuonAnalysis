@@ -39,31 +39,39 @@ std::vector<CommonHitCounter::TrackRefProb> CommonHitCounter::matchingTracks(con
 // }
 
 
-// CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const reco::TrackCollection& tracksFrom, const reco::TrackCollection& tracksTo, bool flatten) const{
-CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten) const{
-  typedef std::pair<reco::TrackRef, std::vector<TrackingRecHit*>> TrackrefHitsPair;
+std::vector<CommonHitCounter::TrackrefHitsPair> CommonHitCounter::prepareTrackRefToHits(const std::vector<reco::TrackRef>& trackRefs, bool flatten) const{
+  std::vector<CommonHitCounter::TrackrefHitsPair> out;
+  out.reserve(trackRefs.size());
+
+  for(const reco::TrackRef& ref : trackRefs)
+    out.push_back( std::make_pair(ref, hitsFromTrack(*ref, flatten)) );
+
+  return out;
+}
+
+
+std::vector<CommonHitCounter::TrackrefHitsPair> CommonHitCounter::prepareTrackRefToHits(const reco::TrackCollection& tracks         , bool flatten) const{
+  std::vector<CommonHitCounter::TrackrefHitsPair> out;
+  out.reserve(tracks.size());
+
+  for(size_t i = 0; i < tracks.size(); ++i)
+    out.push_back( std::make_pair(reco::TrackRef(&tracks, i), hitsFromTrack(tracks.at(i), flatten)) );
+
+  return out;
+}
+
+
+CommonHitCounter::map_type CommonHitCounter::doMatchTrackCollections(std::vector<CommonHitCounter::TrackrefHitsPair>& trackToHitsFrom, std::vector<CommonHitCounter::TrackrefHitsPair>& trackToHitsTo) const{
   typedef std::pair<std::vector<TrackrefHitsPair>::iterator, float> IterProbPair;
   
-  // Tracks and their hits
-  std::vector<TrackrefHitsPair> trackToHitsFrom;
-  std::vector<TrackrefHitsPair> trackToHitsTo  ;
-  trackToHitsFrom.reserve(tracksFrom.size());
-  trackToHitsTo  .reserve(tracksTo  .size());
-  
-  for(const reco::TrackRef& ref : tracksFrom)
-    trackToHitsFrom.push_back( std::make_pair(ref, hitsFromTrack(*ref, flatten)) );
-  for(const reco::TrackRef& ref : tracksTo  )
-    trackToHitsTo  .push_back( std::make_pair(ref, hitsFromTrack(*ref, flatten)) );
-
   map_type associationMap;
-  // std::vector<std::tuple<size_t, size_t, float>> associationMap;  // TEMP
-  
+
   for(auto& [trackFrom, hitsFrom] : trackToHitsFrom){
     std::vector<IterProbPair> vIterProbsTo;  // <<Track,Hits>, prob>, prob is the probability that a given Track (to) shares the hits from this Track (from)
     
     for(auto iterIdxHitsTo = trackToHitsTo.begin(); iterIdxHitsTo != trackToHitsTo.end(); ++iterIdxHitsTo){ //auto& [idxTo, hitsTo]:trackToHitsTo
       const reco::TrackRef& trackTo = iterIdxHitsTo->first;
-      std::vector<TrackingRecHit*>& hitsTo = iterIdxHitsTo->second;
+      const std::vector<TrackingRecHit*>& hitsTo = iterIdxHitsTo->second;
       
       int nMatch, nFrom, nTo;
       std::tie (nMatch, nFrom, nTo) = countMatchingHits(hitsFrom, hitsTo);
@@ -93,7 +101,23 @@ CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const std:
       }
     }
   }
+
   return associationMap;
+}
+
+
+CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const reco::TrackCollection& tracksFrom, const reco::TrackCollection& tracksTo, bool flatten) const{
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsFrom = prepareTrackRefToHits(tracksFrom, flatten);
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsTo   = prepareTrackRefToHits(tracksTo  , flatten);
+
+  return doMatchTrackCollections(trackToHitsFrom, trackToHitsTo);
+}
+
+CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten) const{
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsFrom = prepareTrackRefToHits(tracksFrom, flatten);
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsTo   = prepareTrackRefToHits(tracksTo  , flatten);
+
+  return doMatchTrackCollections(trackToHitsFrom, trackToHitsTo);
 }
 
 
