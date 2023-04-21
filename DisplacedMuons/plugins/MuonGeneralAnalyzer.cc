@@ -68,8 +68,8 @@
 #include "TH1.h"
 //#include "TH2.h"
 #include "TGraphAsymmErrors.h"
-//#include "TCanvas.h"
 #include "TString.h"
+#include "TMath.h"
 
 //
 // class declaration
@@ -98,6 +98,21 @@ class MuonGeneralAnalyzer : public edm::one::EDAnalyzer<> {
     reco::TrackRef newGl;
     reco::GenParticleRef genMuon;
   };
+
+  struct TrackInfo {
+    template<class T=reco::TrackRef>
+    TrackInfo(const T& t) :
+      pt    (t->pt()   ),
+      eta   (t->eta()  ),
+      aeta  (fabs(eta) ),
+      phi   (t->phi()  ),
+      charge(t->charge())
+    {}
+
+    TrackInfo() = default;
+
+    float pt, eta, aeta, phi, charge;
+  };
   
 public:
   explicit MuonGeneralAnalyzer(const edm::ParameterSet&);
@@ -114,7 +129,10 @@ private:
   virtual void endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&);
   
   // Internal utilities
+  void createPlots_old();
   void createPlots();
+  void fillPlotsNumerator(const char* numerator, const char* denominator, const TrackInfo& den, const TrackInfo& num, int npuOOT, int npuIT);
+  void fillPlots(const AssociationRow& row, int npuOOT, int npuIT);
   int fillMatchedPlots(const char* label, const reco::TrackCollection& trackCollection, const reco::GenParticle& gp, int npuOOT, int npuIT);
   void fillFakePlots(const char* label, const reco::TrackCollection& trackCollection, const std::vector<bool>& mask, int npuOOT, int npuIT);
   void endPlots(const char* label);
@@ -196,6 +214,7 @@ MuonGeneralAnalyzer::MuonGeneralAnalyzer(const edm::ParameterSet& iConfig) :
   // commonHitCounter = CommonHitCounter(psetCommonHitCounter);
   
   ////// == Plots ==
+  // createPlots_old();
   createPlots();
 }
 
@@ -278,7 +297,7 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
     return;
   }
   else {
-    if(debugPrint) std::cout << "Found Muon collection!" << muons->size() << ')' << std::endl;
+    if(debugPrint) std::cout << "Found Muon collection! (" << muons->size() << ')' << std::endl;
   }
   
   // GL tracks
@@ -483,7 +502,14 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
 		      row.oldGl    .key(),
 		      row.newGl    .key()
   		      );
+
   std::cout<<"--------------------------------------------------------------------------------\n";
+
+  for(const AssociationRow& row : associationTable){
+    fillPlots(row, npuOOT, npuIT);
+  }
+
+  return;
 
   // ********************************************************************************
   
@@ -581,7 +607,7 @@ void MuonGeneralAnalyzer::endLuminosityBlock(edm::LuminosityBlock const& iLumiBl
 }
 
 
-void MuonGeneralAnalyzer::createPlots(){
+void MuonGeneralAnalyzer::createPlots_old(){
   // -- Binnings --
   //double pt_bins[] = {0., 5., 10., 15., 20., 25., 30., 35., 40., 45., 50., 60., 70., 80., 90., 100., 150., 200.};
   double pt_bins[] = {0., 1., 2., 3., 4., 5., 7.5, 10., 15., 20., 35., 50., 100., 200.};
@@ -607,7 +633,6 @@ void MuonGeneralAnalyzer::createPlots(){
   hists_["evt_muo_counter"] = outfile_->make<TH1F>("evt_muo_counter", ";;counts", 2, 0.5, 2.5); 
   hists_["evt_muo_counter"]->GetXaxis()->SetBinLabel(1, "N. events"); 
   hists_["evt_muo_counter"]->GetXaxis()->SetBinLabel(2, "N. muons"); 
-
   
   for(const char* label : {"sa", "saupd", "gl", "sa0hits", "saupd0hits", "gl0hits"}){
     // -- Resolutions --
@@ -700,6 +725,123 @@ void MuonGeneralAnalyzer::createPlots(){
     hists_[Form("%s_fake_nvalsegs_ovl_permuo", label)] = outfile_->make<TH1F>(Form("%s_fake_nvalsegs_ovl_permuo", label), ";number of valid overlap segments;n. fakes/muon",  5, 0.,  5.);
     hists_[Form("%s_fake_nvalsegs_end_permuo", label)] = outfile_->make<TH1F>(Form("%s_fake_nvalsegs_end_permuo", label), ";number of valid endcap segments;n. fakes/muon" ,  5, 0.,  5.);
   }
+}
+
+
+void MuonGeneralAnalyzer::createPlots(){
+  std::cout << ">>> CREATING PLOTS\n";
+  // -- Binnings --
+  //double pt_bins[] = {0., 5., 10., 15., 20., 25., 30., 35., 40., 45., 50., 60., 70., 80., 90., 100., 150., 200.};
+  double pt_bins[] = {0., 1., 2., 3., 4., 5., 7.5, 10., 15., 20., 35., 50., 100., 200.};
+  int n_pt_bins = sizeof(pt_bins)/sizeof(*pt_bins);
+
+  double aeta_bins[] = {0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6};
+  int n_aeta_bins = sizeof(aeta_bins)/sizeof(*aeta_bins);
+
+  static const double pig = TMath::Pi();
+
+  // Event and segment counter
+  hists_["evt_muo_counter"] = outfile_->make<TH1F>("evt_muo_counter", ";;counts", 2, 0.5, 2.5);
+  hists_["evt_muo_counter"]->GetXaxis()->SetBinLabel(1, "N. events");
+  hists_["evt_muo_counter"]->GetXaxis()->SetBinLabel(2, "N. muons");
+
+  //// ~~ Common ~~
+  // plot category   :   all  | gen_matched | no_match
+  // reference track :  inner |     gen     |  inner
+
+  // Efficiency
+  for(const char* denominator : {"inner", "gen"}){
+    std::cout << '\t' << denominator << ' ';
+    std::string name_den_pt   ( Form("eff_den_%s_pt"   , denominator) );
+    std::string name_den_aeta ( Form("eff_den_%s_aeta" , denominator) );
+    std::string name_den_phi  ( Form("eff_den_%s_phi"  , denominator) );
+    std::string name_den_pu   ( Form("eff_den_%s_pu"   , denominator) );
+    std::string name_den_allpu( Form("eff_den_%s_allpu", denominator) );
+    std::cout << "\tcreating " << name_den_pt << std::endl;
+    hists_[name_den_pt   .c_str()] = outfile_->make<TH1F>(name_den_pt   .c_str(), Form(";%s track p_{T} [GeV];events (denominator)", denominator), n_pt_bins-1  , pt_bins  );
+    hists_[name_den_aeta .c_str()] = outfile_->make<TH1F>(name_den_aeta .c_str(), Form(";%s track |#eta|;events (denominator)"     , denominator), n_aeta_bins-1, aeta_bins);
+    hists_[name_den_phi  .c_str()] = outfile_->make<TH1F>(name_den_phi  .c_str(), Form(";%s track #phi [rad];events (denominator)" , denominator),  10, -pig    , pig      );
+    hists_[name_den_pu   .c_str()] = outfile_->make<TH1F>(name_den_pu   .c_str(),      ";# of IT vertices;events (denominator)"    , MuonGeneralAnalyzer_BINS_pu   );
+    hists_[name_den_allpu.c_str()] = outfile_->make<TH1F>(name_den_allpu.c_str(),      ";# of IT+OOT vertices;events (denominator)", MuonGeneralAnalyzer_BINS_allpu);
+
+    for(const char* numerator: {"outer", "global", "oldSda", "oldSdaUpd", "oldGl", "newSda", "newSdaUpd", "newGl"}){
+      std::cout << "\t\t" << numerator << ' ';
+      std::string name_pt   ( Form("eff_num_%s_%s_pt"   , denominator, numerator) );
+      std::cout << "\t\tcreating " << name_pt << std::endl;
+      std::string name_aeta ( Form("eff_num_%s_%s_aeta" , denominator, numerator) );
+      std::string name_phi  ( Form("eff_num_%s_%s_phi"  , denominator, numerator) );
+      std::string name_pu   ( Form("eff_num_%s_%s_pu"   , denominator, numerator) );
+      std::string name_allpu( Form("eff_num_%s_%s_allpu", denominator, numerator) );
+      std::cout << name_pt << '\n';
+      hists_[name_pt   .c_str()] = outfile_->make<TH1F>(name_pt   .c_str(), Form(";%s track p_{T} [GeV];events (numerator)", denominator), n_pt_bins-1  , pt_bins  );
+      hists_[name_aeta .c_str()] = outfile_->make<TH1F>(name_aeta .c_str(), Form(";%s track |#eta|;events (numerator)"     , denominator), n_aeta_bins-1, aeta_bins);
+      hists_[name_phi  .c_str()] = outfile_->make<TH1F>(name_phi  .c_str(), Form(";%s track #phi [rad];events (numerator)" , denominator),  10, -pig    , pig      );
+      hists_[name_pu   .c_str()] = outfile_->make<TH1F>(name_pu   .c_str(),      ";# of IT vertices;events (numerator)"    , MuonGeneralAnalyzer_BINS_pu   );
+      hists_[name_allpu.c_str()] = outfile_->make<TH1F>(name_allpu.c_str(),      ";# of IT+OOT vertices;events (numerator)", MuonGeneralAnalyzer_BINS_allpu);
+
+      std::string res_pt  = Form("res_%s_%s_pt" , numerator, denominator);
+      std::string res_eta = Form("res_%s_%s_eta", numerator, denominator);
+      std::string res_phi = Form("res_%s_%s_phi", numerator, denominator);
+      std::string res_dr  = Form("res_%s_%s_dr" , numerator, denominator);
+      hists_[res_pt .c_str()] = outfile_->make<TH1F>(res_pt .c_str(), ";#Delta(q/p_{T})_{REC-GEN}/(q/p_{T})_{GEN};events", 100, -5., 5.);
+      hists_[res_eta.c_str()] = outfile_->make<TH1F>(res_eta.c_str(), ";#Delta#eta_{REC-GEN};events"                     , 60, -.3, .3);
+      hists_[res_phi.c_str()] = outfile_->make<TH1F>(res_phi.c_str(), ";#Delta#phi_{REC-GEN};events"                     , 60, -.3, .3);
+      hists_[res_dr .c_str()] = outfile_->make<TH1F>(res_dr .c_str(), ";#DeltaR_{REC-GEN};events"                        , 60,  0., .3);
+    }
+  }
+  std::cout << "... DONE !\n";
+}
+
+
+void MuonGeneralAnalyzer::fillPlotsNumerator(const char* numerator, const char* denominator, const MuonGeneralAnalyzer::TrackInfo& den, const MuonGeneralAnalyzer::TrackInfo& num, int npuOOT, int npuIT){
+  hists_[ Form("eff_num_%s_%s_pt"   , denominator, numerator) ]->Fill(den.pt  );
+  hists_[ Form("eff_num_%s_%s_aeta" , denominator, numerator) ]->Fill(den.aeta);
+  hists_[ Form("eff_num_%s_%s_phi"  , denominator, numerator) ]->Fill(den.phi );
+  hists_[ Form("eff_num_%s_%s_pu"   , denominator, numerator) ]->Fill(npuIT   );
+  hists_[ Form("eff_num_%s_%s_allpu", denominator, numerator) ]->Fill(npuIT+npuOOT);
+
+  // if     (num.pt == 0)
+  //   std::cout << "ERROR: " << numerator   << " pt is null!" << std::endl;
+  // else if(den.pt == 0)
+  //   std::cout << "ERROR: " << denominator << " pt is null!" << std::endl;
+  // else
+  hists_[Form("res_%s_%s_pt" , numerator, denominator)]->Fill((num.charge/den.charge)*(den.pt/num.pt) - 1.);
+  hists_[Form("res_%s_%s_eta", numerator, denominator)]->Fill(num.eta - den.eta);
+  hists_[Form("res_%s_%s_phi", numerator, denominator)]->Fill(deltaPhi(num.phi, den.phi));
+  hists_[Form("res_%s_%s_dr" , numerator, denominator)]->Fill(deltaR(den.eta, den.phi, num.eta, num.phi));
+}
+
+
+void MuonGeneralAnalyzer::fillPlots(const MuonGeneralAnalyzer::AssociationRow& row, int npuOOT, int npuIT){
+  char denominator[8];
+  TrackInfo den;
+  if(row.genMuon.isNonnull()){
+    den = TrackInfo(row.genMuon);
+    snprintf(denominator, 8, "gen");
+  }
+  else if(row.inner.isNonnull()){
+    den = TrackInfo(row.inner);
+    snprintf(denominator, 8, "inner");
+  }
+  else{
+    std::cout << "WARN: null inner track!";
+    return;
+  }
+
+  hists_[ Form("eff_den_%s_pt"   , denominator) ]->Fill(den.pt  );
+  hists_[ Form("eff_den_%s_aeta" , denominator) ]->Fill(den.aeta);
+  hists_[ Form("eff_den_%s_phi"  , denominator) ]->Fill(den.phi );
+  hists_[ Form("eff_den_%s_pu"   , denominator) ]->Fill(npuIT   );
+  hists_[ Form("eff_den_%s_allpu", denominator) ]->Fill(npuIT+npuOOT);
+
+  if(row.outer.isNonnull()    ) fillPlotsNumerator("outer"    , denominator, den, TrackInfo(row.outer    ), npuOOT, npuIT);
+  if(row.global.isNonnull()   ) fillPlotsNumerator("global"   , denominator, den, TrackInfo(row.global   ), npuOOT, npuIT);
+  if(row.oldSda.isNonnull()   ) fillPlotsNumerator("oldSda"   , denominator, den, TrackInfo(row.oldSda   ), npuOOT, npuIT);
+  if(row.oldSdaUpd.isNonnull()) fillPlotsNumerator("oldSdaUpd", denominator, den, TrackInfo(row.oldSdaUpd), npuOOT, npuIT);
+  if(row.oldGl.isNonnull()    ) fillPlotsNumerator("oldGl"    , denominator, den, TrackInfo(row.oldGl    ), npuOOT, npuIT);
+  if(row.newSda.isNonnull()   ) fillPlotsNumerator("newSda"   , denominator, den, TrackInfo(row.newSda   ), npuOOT, npuIT);
+  if(row.newSdaUpd.isNonnull()) fillPlotsNumerator("newSdaUpd", denominator, den, TrackInfo(row.newSdaUpd), npuOOT, npuIT);
+  if(row.newGl.isNonnull()    ) fillPlotsNumerator("newGl"    , denominator, den, TrackInfo(row.newGl    ), npuOOT, npuIT);
 }
 
 
@@ -836,60 +978,60 @@ void MuonGeneralAnalyzer::fillFakePlots(const char* label, const reco::TrackColl
 
 void MuonGeneralAnalyzer::endPlots(const char* label){
   const char divopt[] = "cl=0.683 b(1,1) mode";
-  try{ graphs_[Form("%s_eff_pt_err"   , label)]->Divide(hists_[Form("%s_eff_num_pt"   , label)], hists_["eff_den_pt"   ], divopt); } catch(cms::Exception& ex) {}
-  try{ graphs_[Form("%s_eff_aeta_err" , label)]->Divide(hists_[Form("%s_eff_num_aeta" , label)], hists_["eff_den_aeta" ], divopt); } catch(cms::Exception& ex) {}
-  try{ graphs_[Form("%s_eff_phi_err"  , label)]->Divide(hists_[Form("%s_eff_num_phi"  , label)], hists_["eff_den_phi"  ], divopt); } catch(cms::Exception& ex) {}
-  try{ graphs_[Form("%s_eff_pu_err"   , label)]->Divide(hists_[Form("%s_eff_num_allpu", label)], hists_["eff_den_allpu"], divopt); } catch(cms::Exception& ex) {}
-  try{ graphs_[Form("%s_eff_allpu_err", label)]->Divide(hists_[Form("%s_eff_num_allpu", label)], hists_["eff_den_allpu"], divopt); } catch(cms::Exception& ex) {}
+  // try{ graphs_[Form("%s_eff_pt_err"   , label)]->Divide(hists_[Form("%s_eff_num_pt"   , label)], hists_["eff_den_pt"   ], divopt); } catch(cms::Exception& ex) {}
+  // try{ graphs_[Form("%s_eff_aeta_err" , label)]->Divide(hists_[Form("%s_eff_num_aeta" , label)], hists_["eff_den_aeta" ], divopt); } catch(cms::Exception& ex) {}
+  // try{ graphs_[Form("%s_eff_phi_err"  , label)]->Divide(hists_[Form("%s_eff_num_phi"  , label)], hists_["eff_den_phi"  ], divopt); } catch(cms::Exception& ex) {}
+  // try{ graphs_[Form("%s_eff_pu_err"   , label)]->Divide(hists_[Form("%s_eff_num_allpu", label)], hists_["eff_den_allpu"], divopt); } catch(cms::Exception& ex) {}
+  // try{ graphs_[Form("%s_eff_allpu_err", label)]->Divide(hists_[Form("%s_eff_num_allpu", label)], hists_["eff_den_allpu"], divopt); } catch(cms::Exception& ex) {}
   
   float n_events = hists_["evt_muo_counter"]->GetBinContent(1);
   float n_muons  = hists_["evt_muo_counter"]->GetBinContent(2);
   
-  hists_[Form("%s_fake_pt_perevt"          , label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_aeta_perevt"        , label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_phi_perevt"         , label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_pu_perevt"          , label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_allpu_perevt"       , label)]->Scale( 1./n_events );
-  
-  hists_[Form("%s_fake_nhits_perevt"       , label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nhits_bar_perevt"   , label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nhits_ovl_perevt"   , label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nhits_end_perevt"   , label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nvalhits_perevt"    , label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nvalhits_bar_perevt", label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nvalhits_ovl_perevt", label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nvalhits_end_perevt", label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nsegs_perevt"       , label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nsegs_bar_perevt"   , label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nsegs_ovl_perevt"   , label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nsegs_end_perevt"   , label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nvalsegs_perevt"    , label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nvalsegs_bar_perevt", label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nvalsegs_ovl_perevt", label)]->Scale( 1./n_events );
-  hists_[Form("%s_fake_nvalsegs_end_perevt", label)]->Scale( 1./n_events );
-  
-  hists_[Form("%s_fake_pt_permuo"          , label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_aeta_permuo"        , label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_phi_permuo"         , label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_pu_permuo"          , label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_allpu_permuo"       , label)]->Scale( 1./n_muons );
-  
-  hists_[Form("%s_fake_nhits_permuo"       , label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nhits_bar_permuo"   , label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nhits_ovl_permuo"   , label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nhits_end_permuo"   , label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nvalhits_permuo"    , label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nvalhits_bar_permuo", label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nvalhits_ovl_permuo", label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nvalhits_end_permuo", label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nsegs_permuo"       , label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nsegs_bar_permuo"   , label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nsegs_ovl_permuo"   , label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nsegs_end_permuo"   , label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nvalsegs_permuo"    , label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nvalsegs_bar_permuo", label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nvalsegs_ovl_permuo", label)]->Scale( 1./n_muons );
-  hists_[Form("%s_fake_nvalsegs_end_permuo", label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_pt_perevt"          , label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_aeta_perevt"        , label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_phi_perevt"         , label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_pu_perevt"          , label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_allpu_perevt"       , label)]->Scale( 1./n_events );
+
+  // hists_[Form("%s_fake_nhits_perevt"       , label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nhits_bar_perevt"   , label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nhits_ovl_perevt"   , label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nhits_end_perevt"   , label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nvalhits_perevt"    , label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nvalhits_bar_perevt", label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nvalhits_ovl_perevt", label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nvalhits_end_perevt", label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nsegs_perevt"       , label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nsegs_bar_perevt"   , label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nsegs_ovl_perevt"   , label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nsegs_end_perevt"   , label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nvalsegs_perevt"    , label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nvalsegs_bar_perevt", label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nvalsegs_ovl_perevt", label)]->Scale( 1./n_events );
+  // hists_[Form("%s_fake_nvalsegs_end_perevt", label)]->Scale( 1./n_events );
+
+  // hists_[Form("%s_fake_pt_permuo"          , label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_aeta_permuo"        , label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_phi_permuo"         , label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_pu_permuo"          , label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_allpu_permuo"       , label)]->Scale( 1./n_muons );
+
+  // hists_[Form("%s_fake_nhits_permuo"       , label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nhits_bar_permuo"   , label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nhits_ovl_permuo"   , label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nhits_end_permuo"   , label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nvalhits_permuo"    , label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nvalhits_bar_permuo", label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nvalhits_ovl_permuo", label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nvalhits_end_permuo", label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nsegs_permuo"       , label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nsegs_bar_permuo"   , label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nsegs_ovl_permuo"   , label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nsegs_end_permuo"   , label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nvalsegs_permuo"    , label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nvalsegs_bar_permuo", label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nvalsegs_ovl_permuo", label)]->Scale( 1./n_muons );
+  // hists_[Form("%s_fake_nvalsegs_end_permuo", label)]->Scale( 1./n_muons );
 }
 
 // define this as a plug-in
