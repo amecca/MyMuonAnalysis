@@ -5,13 +5,13 @@ CommonHitCounter::CommonHitCounter(const edm::ParameterSet& iConfig) :
 {}
 
 
-std::vector<CommonHitCounter::TrackRefProb> CommonHitCounter::matchingTracks(const reco::Track& trackFrom, reco::TrackCollection& tracksTo, bool flatten) const{
+std::vector<CommonHitCounter::TrackRefProb> CommonHitCounter::matchingTracks(const reco::Track& trackFrom, reco::TrackCollection& tracksTo, bool flatten, const std::unordered_set<DetId::Detector>& detectors) const{
   std::vector<TrackRefProb> result;
   
-  std::vector<TrackingRecHit*> hitsFrom = hitsFromTrack(trackFrom, flatten);
+  std::vector<TrackingRecHit*> hitsFrom = hitsFromTrack(trackFrom, flatten, detectors);
   for(size_t i = 0; i < tracksTo.size(); ++i){
     const reco::TrackRef trackRefTo(&tracksTo, i);
-    std::vector<TrackingRecHit*> hitsTo = hitsFromTrack(*trackRefTo, flatten);
+    std::vector<TrackingRecHit*> hitsTo = hitsFromTrack(*trackRefTo, flatten, detectors);
     
     int nMatch, nFrom, nTo;
     std::tie (nMatch, nFrom, nTo) = countMatchingHits(hitsFrom, hitsTo);
@@ -31,31 +31,23 @@ std::vector<CommonHitCounter::TrackRefProb> CommonHitCounter::matchingTracks(con
 }
 
 
-// std::vector<>
-
-
-// std::vector<CommonHitCounter::TrackRefProb> CommonHitCounter::matchingTracks(const reco::TrackRef& trackRefFrom, reco::TrackCollection& tracksTo, bool flatten) const{
-//   return matchingTracks(*trackRefFrom, tracksTo, flatten);
-// }
-
-
-std::vector<CommonHitCounter::TrackrefHitsPair> CommonHitCounter::prepareTrackRefToHits(const std::vector<reco::TrackRef>& trackRefs, bool flatten) const{
+std::vector<CommonHitCounter::TrackrefHitsPair> CommonHitCounter::prepareTrackRefToHits(const std::vector<reco::TrackRef>& trackRefs, bool flatten, const std::unordered_set<DetId::Detector>& detectors) const{
   std::vector<CommonHitCounter::TrackrefHitsPair> out;
   out.reserve(trackRefs.size());
 
   for(const reco::TrackRef& ref : trackRefs)
-    out.push_back( std::make_pair(ref, hitsFromTrack(*ref, flatten)) );
+    out.push_back( std::make_pair(ref, hitsFromTrack(*ref, flatten, detectors)) );
 
   return out;
 }
 
 
-std::vector<CommonHitCounter::TrackrefHitsPair> CommonHitCounter::prepareTrackRefToHits(const reco::TrackCollection& tracks         , bool flatten) const{
+std::vector<CommonHitCounter::TrackrefHitsPair> CommonHitCounter::prepareTrackRefToHits(const reco::TrackCollection& tracks         , bool flatten, const std::unordered_set<DetId::Detector>& detectors) const{
   std::vector<CommonHitCounter::TrackrefHitsPair> out;
   out.reserve(tracks.size());
 
   for(size_t i = 0; i < tracks.size(); ++i)
-    out.push_back( std::make_pair(reco::TrackRef(&tracks, i), hitsFromTrack(tracks.at(i), flatten)) );
+    out.push_back( std::make_pair(reco::TrackRef(&tracks, i), hitsFromTrack(tracks.at(i), flatten, detectors)) );
 
   return out;
 }
@@ -106,30 +98,30 @@ CommonHitCounter::map_type CommonHitCounter::doMatchTrackCollections(std::vector
 }
 
 
-CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const reco::TrackCollection&      tracksFrom, const reco::TrackCollection& tracksTo      , bool flatten) const{
-  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsFrom = prepareTrackRefToHits(tracksFrom, flatten);
-  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsTo   = prepareTrackRefToHits(tracksTo  , flatten);
+CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const reco::TrackCollection&      tracksFrom, const reco::TrackCollection& tracksTo      , bool flatten, const std::unordered_set<DetId::Detector>& d) const{
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsFrom = prepareTrackRefToHits(tracksFrom, flatten, d);
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsTo   = prepareTrackRefToHits(tracksTo  , flatten, d);
 
   return doMatchTrackCollections(trackToHitsFrom, trackToHitsTo);
 }
 
-CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const reco::TrackCollection&      tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten) const{
-  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsFrom = prepareTrackRefToHits(tracksFrom, flatten);
-  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsTo   = prepareTrackRefToHits(tracksTo  , flatten);
+CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const reco::TrackCollection&      tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten, const std::unordered_set<DetId::Detector>& d) const{
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsFrom = prepareTrackRefToHits(tracksFrom, flatten, d);
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsTo   = prepareTrackRefToHits(tracksTo  , flatten, d);
 
   return doMatchTrackCollections(trackToHitsFrom, trackToHitsTo);
 }
 
-CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const reco::TrackCollection& tracksTo     , bool flatten) const{
-  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsFrom = prepareTrackRefToHits(tracksFrom, flatten);
-  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsTo   = prepareTrackRefToHits(tracksTo  , flatten);
+CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const reco::TrackCollection& tracksTo     , bool flatten, const std::unordered_set<DetId::Detector>& d) const{
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsFrom = prepareTrackRefToHits(tracksFrom, flatten, d);
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsTo   = prepareTrackRefToHits(tracksTo  , flatten, d);
 
   return doMatchTrackCollections(trackToHitsFrom, trackToHitsTo);
 }
 
-CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten) const{
-  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsFrom = prepareTrackRefToHits(tracksFrom, flatten);
-  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsTo   = prepareTrackRefToHits(tracksTo  , flatten);
+CommonHitCounter::map_type CommonHitCounter::matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten, const std::unordered_set<DetId::Detector>& d) const{
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsFrom = prepareTrackRefToHits(tracksFrom, flatten, d);
+  std::vector<CommonHitCounter::TrackrefHitsPair> trackToHitsTo   = prepareTrackRefToHits(tracksTo  , flatten, d);
 
   return doMatchTrackCollections(trackToHitsFrom, trackToHitsTo);
 }
@@ -156,14 +148,18 @@ std::vector<TrackingRecHit*> CommonHitCounter::flattenTrackingRecHits(const std:
 }
 
 
-std::vector<TrackingRecHit*> CommonHitCounter::hitsFromTrack(const reco::Track& t, bool flatten) const{
+std::vector<TrackingRecHit*> CommonHitCounter::hitsFromTrack(const reco::Track& t, bool flatten, const std::unordered_set<DetId::Detector>& detectors) const{
   // This copy is done also to not modify the track's oiginal hits
   auto begin = t.recHitsBegin();
   auto end   = t.recHitsEnd();
-  size_t n = std::distance(begin, end);
-  std::vector<TrackingRecHit*> hits(n);
-  std::copy(begin, end, hits.begin());
-  
+  std::vector<TrackingRecHit*> hits;
+  hits.reserve(std::distance(begin, end));
+
+  std::copy_if(begin, end, std::back_inserter(hits), [detectors](auto it_hit){
+      return dynamic_cast<InvalidTrackingRecHit*>(it_hit) == nullptr                  // skip invalid hits
+	&& ( detectors.empty() || detectors.count(it_hit->geographicalId().det()) );  // If given a set of dedtectors, use oly hits in that detectors
+    });
+
   if(flatten){
     std::vector<TrackingRecHit*> out = flattenTrackingRecHits(hits);
     return out;
@@ -188,23 +184,10 @@ std::tuple<int, int, int> CommonHitCounter::countMatchingHits(const std::vector<
   return std::make_tuple(matches, hits_1.size(), hits_2.size());
 }
 
-std::tuple<int, int, int> CommonHitCounter::countMatchingHits(const reco::Track& t1, const reco::Track& t2, bool flatten) const{
-  // Negative numbers correspond to errors --> move to matchProbability()
-  // if(! (t1->extra().isAvailable() && t2->extra().isAvailable()) )
-  //   return std::make_tuple(-1, 0, 0);
-  
-  std::vector<TrackingRecHit*> hits_1 = hitsFromTrack(t1, flatten);
-  std::vector<TrackingRecHit*> hits_2 = hitsFromTrack(t2, flatten);
-  
-  // std::cout << ">>>>>>>>>> Dumping hits_1\n";
-  // for(auto hit : hits_1){
-  //   dumpHit(*hit, std::cout);
-  // }
-  // std::cout << ">>>>>>>>>> Dumping hits_2\n";
-  // for(auto hit : hits_2){
-  //   dumpHit(*hit, std::cout);
-  // }
-  
+
+std::tuple<int, int, int> CommonHitCounter::countMatchingHits(const reco::Track& t1, const reco::Track& t2, bool flatten, const std::unordered_set<DetId::Detector>& d) const{
+  std::vector<TrackingRecHit*> hits_1 = hitsFromTrack(t1, flatten, d);
+  std::vector<TrackingRecHit*> hits_2 = hitsFromTrack(t2, flatten, d);
   return countMatchingHits(hits_1, hits_2);
 }
 

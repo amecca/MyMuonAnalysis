@@ -46,9 +46,9 @@ class CommonHitCounter {
   template <class T>
   struct HashRef {
     // Hash for edm::Ref
-    // bytes  :   7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 
+    // bytes  :   7 | 6 | 5 | 4 | 3 | 2 | 1 | 0
     // content:    proc |  prod |      key
-    
+
     static constexpr unsigned int bitshift_half    = (sizeof(size_t)/2) * 8;
     static constexpr unsigned int bitshift_quarter = (sizeof(size_t)/4) * 8;
     size_t operator()(const edm::Ref<T>& ref) const{
@@ -69,25 +69,25 @@ class CommonHitCounter {
   explicit CommonHitCounter(const edm::ParameterSet&);
 
   /* std::vector<TrackRefProb> matchingTracks(const reco::TrackRef& trackRefFrom, reco::TrackCollection& tracksTo, bool flatten) const; */
-  std::vector<TrackRefProb> matchingTracks(const reco::Track&          trackFrom , reco::TrackCollection&             tracksTo, bool flatten=false) const;
-  map_type matchingTrackCollections(const reco::TrackCollection&       tracksFrom, const reco::TrackCollection&       tracksTo, bool flatten=false) const;
-  map_type matchingTrackCollections(const reco::TrackCollection&       tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten=false) const;
-  map_type matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const reco::TrackCollection&       tracksTo, bool flatten=false) const;
-  map_type matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten=false) const;
-  
+  std::vector<TrackRefProb> matchingTracks(const reco::Track&          trackFrom , reco::TrackCollection&             tracksTo, bool flatten=true, const std::unordered_set<DetId::Detector>& d={}) const;
+  map_type matchingTrackCollections(const reco::TrackCollection&       tracksFrom, const reco::TrackCollection&       tracksTo, bool flatten=true, const std::unordered_set<DetId::Detector>& d={}) const;
+  map_type matchingTrackCollections(const reco::TrackCollection&       tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten=true, const std::unordered_set<DetId::Detector>& d={}) const;
+  map_type matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const reco::TrackCollection&       tracksTo, bool flatten=true, const std::unordered_set<DetId::Detector>& d={}) const;
+  map_type matchingTrackCollections(const std::vector<reco::TrackRef>& tracksFrom, const std::vector<reco::TrackRef>& tracksTo, bool flatten=true, const std::unordered_set<DetId::Detector>& d={}) const;
+
   std::tuple<int, int, int> countMatchingHits(const std::vector<TrackingRecHit*>&, const std::vector<TrackingRecHit*>&) const;
-  std::tuple<int, int, int> countMatchingHits(const reco::Track&    t1, const reco::Track& t2   , bool flatten=false) const;
-  std::tuple<int, int, int> countMatchingHits(const reco::TrackRef& t1, const reco::TrackRef& t2, bool flatten=false) const{
-    return countMatchingHits(t1, t2, flatten);
+  std::tuple<int, int, int> countMatchingHits(const reco::Track&    t1, const reco::Track& t2   , bool flatten, const std::unordered_set<DetId::Detector>& d) const;
+  std::tuple<int, int, int> countMatchingHits(const reco::TrackRef& t1, const reco::TrackRef& t2, bool flatten, const std::unordered_set<DetId::Detector>& d) const{
+    return countMatchingHits(t1, t2, flatten, d);
   }
 
  protected:
   map_type doMatchTrackCollections(std::vector<TrackrefHitsPair>& trackToHitsFrom, std::vector<TrackrefHitsPair>& trackToHitsTo) const;
 
-  std::vector<TrackrefHitsPair> prepareTrackRefToHits(const std::vector<reco::TrackRef>& trackRefs, bool flatten) const;
-  std::vector<TrackrefHitsPair> prepareTrackRefToHits(const reco::TrackCollection& tracks         , bool flatten) const;
+  std::vector<TrackrefHitsPair> prepareTrackRefToHits(const std::vector<reco::TrackRef>& trackRefs, bool flatten, const std::unordered_set<DetId::Detector>&) const;
+  std::vector<TrackrefHitsPair> prepareTrackRefToHits(const reco::TrackCollection& tracks         , bool flatten, const std::unordered_set<DetId::Detector>&) const;
 
-  std::vector<TrackingRecHit*> hitsFromTrack(const reco::Track& t, bool flatten=false) const;
+  std::vector<TrackingRecHit*> hitsFromTrack(const reco::Track& t, bool flatten, const std::unordered_set<DetId::Detector>& d) const;
   std::vector<TrackingRecHit*> flattenTrackingRecHits(const std::vector<TrackingRecHit*>&) const;
   
   void dumpHit(const TrackingRecHit& hit, std::ostream& ostr) const;
