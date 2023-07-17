@@ -117,6 +117,8 @@ class MuonGeneralAnalyzer : public edm::one::EDAnalyzer<> {
 public:
   explicit MuonGeneralAnalyzer(const edm::ParameterSet&);
   ~MuonGeneralAnalyzer();
+  template <class MAP = CommonHitCounter::map_type>
+  static typename MAP::const_iterator reverse_find(const MAP& map, const typename MAP::mapped_type& v);
 
 private:
   virtual void beginJob() ;
@@ -221,6 +223,12 @@ MuonGeneralAnalyzer::MuonGeneralAnalyzer(const edm::ParameterSet& iConfig) :
 
 MuonGeneralAnalyzer::~MuonGeneralAnalyzer() { 
   if(debugPrint) std::cout << "Inside Destructor" << std::endl;
+}
+
+
+template <class MAP = CommonHitCounter::map_type>
+typename MAP::const_iterator MuonGeneralAnalyzer::reverse_find(const MAP& map, const typename MAP::mapped_type& val){
+  return find_if(map.begin(), map.end(), [val](const typename MAP::value_type pair){ return pair.second == val; });
 }
 
 
