@@ -427,6 +427,7 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
   std::vector<AssociationRow> associationTable;
   associationTable.reserve(muons->size());
   for(unsigned int i = 0; i < muons->size(); ++i){
+    hists_["evt_muo_counter"]->Fill(2.);
     AssociationRow row;
     row.muon = reco::MuonRef(muons, i);
     row.inner  = muons->at(i).innerTrack();
