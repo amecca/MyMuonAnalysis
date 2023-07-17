@@ -79,8 +79,8 @@ using namespace edm;
 using std::vector;
 using std::string;
 
-#define MuonGeneralAnalyzer_BINS_pu 20,0.,120
-#define MuonGeneralAnalyzer_BINS_allpu 20,200.,600
+#define MuonGeneralAnalyzer_BINS_pu 24,0.,120.
+#define MuonGeneralAnalyzer_BINS_allpu 40,0.,1000.
 
 class MuonGeneralAnalyzer : public edm::one::EDAnalyzer<> {
   // Helper struct defining a "row" of associations
