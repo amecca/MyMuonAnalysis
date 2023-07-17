@@ -10,7 +10,7 @@ process.source = cms.Source('PoolSource',
                             fileNames = cms.untracked.vstring('file:{}/src/MyMuonAnalysis/DisplacedMuons/test/ZToMuMu.root'.format(environ['CMSSW_BASE'])),
                             duplicateCheckMode = cms.untracked.string('noDuplicateCheck')
                             )
-process.maxEvents = cms.untracked.PSet(input = cms.untracked.int32(5))
+process.maxEvents = cms.untracked.PSet(input = cms.untracked.int32(10))
 
 
 process.load('Configuration.StandardSequences.FrontierConditions_GlobalTag_cff') 
@@ -31,7 +31,8 @@ process.muonAnalysis = cms.EDAnalyzer('MuonGeneralAnalyzer',
                                          newGlobalTracks  = cms.InputTag('globalMuons::RESTA'),
                                          genParticleMatch = cms.InputTag('muonSimClassifier:toPrimaries:RECO'),
                                          hitCounterParams = cms.untracked.PSet(
-                                             debug = cms.untracked.bool(True)
+                                             debug = cms.untracked.bool(True),
+                                             matchingFractionCut = cms.double(0.8)
                                          )
                                      )
 

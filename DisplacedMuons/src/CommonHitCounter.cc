@@ -2,6 +2,7 @@
 
 CommonHitCounter::CommonHitCounter(const edm::ParameterSet& iConfig) :
   debug_( iConfig.exists("debug") && iConfig.getUntrackedParameter<bool>("debug") )
+  , matchingFractionCut_(iConfig.getParameter<double>("matchingFractionCut"))
 {}
 
 
@@ -85,7 +86,7 @@ CommonHitCounter::map_type CommonHitCounter::doMatchTrackCollections(std::vector
       auto winner = vIterProbsTo.front();
       if(debug_)
 	std::cout << "Choosen: "<<vIterProbsTo.front().second<<" last: "<<vIterProbsTo.back().second<<'\n';
-      if(winner.second > 0.5){
+      if(winner.second > matchingFractionCut_){
 	const reco::TrackRef& trackTo = winner.first->first;
 	// associationMap.insert(trackFrom, trackTo);
 	associationMap.insert(std::make_pair(trackFrom, trackTo));

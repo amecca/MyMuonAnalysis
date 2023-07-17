@@ -94,6 +94,7 @@ class CommonHitCounter {
   
  private:
   bool debug_;
+  float matchingFractionCut_;  // Fraction of common hits required to declare that two tracks are equal
 };
 
 #endif
