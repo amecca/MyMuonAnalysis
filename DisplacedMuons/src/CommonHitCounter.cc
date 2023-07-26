@@ -88,7 +88,6 @@ CommonHitCounter::map_type CommonHitCounter::doMatchTrackCollections(std::vector
 	std::cout << "Choosen: "<<vIterProbsTo.front().second<<" last: "<<vIterProbsTo.back().second<<'\n';
       if(winner.second > matchingFractionCut_){
 	const reco::TrackRef& trackTo = winner.first->first;
-	// associationMap.insert(trackFrom, trackTo);
 	associationMap.insert(std::make_pair(trackFrom, trackTo));
 	trackToHitsTo.erase(winner.first);
       }
@@ -154,11 +153,11 @@ std::vector<TrackingRecHit*> CommonHitCounter::hitsFromTrack(const reco::Track& 
   auto begin = t.recHitsBegin();
   auto end   = t.recHitsEnd();
   std::vector<TrackingRecHit*> hits;
-  hits.reserve(std::distance(begin, end));
+  hits.reserve(t.recHitsSize()); //std::distance(begin, end)
 
   std::copy_if(begin, end, std::back_inserter(hits), [detectors](auto it_hit){
       return dynamic_cast<InvalidTrackingRecHit*>(it_hit) == nullptr                  // skip invalid hits
-	&& ( detectors.empty() || detectors.count(it_hit->geographicalId().det()) );  // If given a set of dedtectors, use oly hits in that detectors
+	&& ( detectors.empty() || detectors.count(it_hit->geographicalId().det()) );  // If given a set of detectors, use oly hits in those detectors
     });
 
   if(flatten){
