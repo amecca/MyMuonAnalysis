@@ -6,29 +6,39 @@ CommonHitCounter::CommonHitCounter(const edm::ParameterSet& iConfig) :
 {}
 
 
-std::vector<CommonHitCounter::TrackRefProb> CommonHitCounter::matchingTracks(const reco::Track& trackFrom, reco::TrackCollection& tracksTo, bool flatten, const std::unordered_set<DetId::Detector>& detectors) const{
-  std::vector<TrackRefProb> result;
-  
-  std::vector<TrackingRecHit*> hitsFrom = hitsFromTrack(trackFrom, flatten, detectors);
+reco::TrackRef CommonHitCounter::matchHits(const std::vector<TrackingRecHit*>& hitsFrom, const reco::TrackCollection& tracksTo, bool flatten, const std::unordered_set<DetId::Detector>& detectors) const{
+  std::vector<TrackRefProb> vProbTo;
+
   for(size_t i = 0; i < tracksTo.size(); ++i){
     const reco::TrackRef trackRefTo(&tracksTo, i);
     std::vector<TrackingRecHit*> hitsTo = hitsFromTrack(*trackRefTo, flatten, detectors);
-    
+
     int nMatch, nFrom, nTo;
     std::tie (nMatch, nFrom, nTo) = countMatchingHits(hitsFrom, hitsTo);
-    
+
     if(nMatch){
       // ########################################
       float prob = 2.*nMatch/(nTo + nFrom);
       // ########################################
-      result.push_back(make_pair(trackRefTo, prob));
+      vProbTo.push_back(make_pair(trackRefTo, prob));
     }
   }
-  
-  std::sort(result.begin(), result.end(),
-	    [](const TrackRefProb& a, const TrackRefProb& b){ return a.second > b.second; }
-	    );
-  return result;
+
+  if(vProbTo.size() > 0){
+    auto best = std::max_element(vProbTo.begin(), vProbTo.end(),
+				 [](const TrackRefProb& a, const TrackRefProb& b){ return a.second > b.second; }
+				 );
+    if(best->second > matchingFractionCut_)
+      return best->first;
+  }
+
+  return reco::TrackRef();
+}
+
+
+reco::TrackRef CommonHitCounter::matchTrack(const reco::Track& trackFrom, const reco::TrackCollection& tracksTo, bool flatten, const std::unordered_set<DetId::Detector>& detectors) const{
+  std::vector<TrackingRecHit*> hitsFrom = hitsFromTrack(trackFrom, flatten, detectors);
+  return matchHits(hitsFrom, tracksTo, flatten, detectors);
 }
 
 
