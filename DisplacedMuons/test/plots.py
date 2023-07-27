@@ -2,8 +2,8 @@
 import sys
 
 # Use python3 instead of the default python2.7.5 (which breaks in importing ROOT, for some reason...)
-pyver = sys.version.split()[0]
-if int(pyver[0])<3:
+pyver = sys.version_info.major
+if pyver < 3:
     print(' __________________________         __________________________')
     print('|  ________________________ WARNING _________________________ ')
     print('| |')
