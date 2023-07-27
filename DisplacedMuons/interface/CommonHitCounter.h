@@ -81,6 +81,8 @@ class CommonHitCounter {
     return countMatchingHits(t1, t2, flatten, d);
   }
 
+  std::vector<TrackingRecHit*> flattenTrackingRecHits(const std::vector<TrackingRecHit*>&) const;
+
  protected:
   map_type doMatchTrackCollections(std::vector<TrackrefHitsPair>& trackToHitsFrom, std::vector<TrackrefHitsPair>& trackToHitsTo) const;
 
@@ -88,7 +90,6 @@ class CommonHitCounter {
   std::vector<TrackrefHitsPair> prepareTrackRefToHits(const reco::TrackCollection& tracks         , bool flatten, const std::unordered_set<DetId::Detector>&) const;
 
   std::vector<TrackingRecHit*> hitsFromTrack(const reco::Track& t, bool flatten, const std::unordered_set<DetId::Detector>& d) const;
-  std::vector<TrackingRecHit*> flattenTrackingRecHits(const std::vector<TrackingRecHit*>&) const;
   
   void dumpHit(const TrackingRecHit& hit, std::ostream& ostr) const;
   
