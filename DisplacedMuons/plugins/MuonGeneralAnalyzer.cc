@@ -138,9 +138,8 @@ private:
   int fillMatchedPlots(const char* label, const reco::TrackCollection& trackCollection, const reco::GenParticle& gp, int npuOOT, int npuIT);
   void fillFakePlots(const char* label, const reco::TrackCollection& trackCollection, const std::vector<bool>& mask, int npuOOT, int npuIT);
   void endPlots(const char* label);
-  template <class T> std::string debugRef(const edm::Ref<T>
-					  // , size_t (*hashFn)(const Ref<T>&)
-					  ) const;
+  static std::string toString(const edm::ProductID&);
+  template <class T> static std::string toString(const edm::Ref<T>&);
 
   // ----------member data ---------------------------
   
@@ -207,9 +206,13 @@ MuonGeneralAnalyzer::MuonGeneralAnalyzer(const edm::ParameterSet& iConfig) :
 {
   if(debugPrint) std::cout << "Inside Constructor" << std::endl;
   
-  if(useGenMatchMap_)
+  if(useGenMatchMap_){
     genParticleMatchToken_ = consumes<reco::GenParticleMatch>( iConfig.getParameter<edm::InputTag>("genParticleMatch") );
-  
+    if(debugPrint) std::cout << "genParticleMatch: " << iConfig.getParameter<edm::InputTag>("genParticleMatch").encode() << std::endl;
+  }
+  else if(debugPrint)
+    std::cout << "genParticleMatch: NONE" << std::endl;
+
   // edm::ParameterSet psetCommonHitCounter;
   // if(iConfig.existsAs<edm::ParameterSet>("hitCounterParams"))
   //   psetCommonHitCounter = iConfig.getParameter<edm::ParameterSet>("hitCounterParams");
@@ -235,15 +238,21 @@ typename MAP::const_iterator MuonGeneralAnalyzer::reverse_find(const MAP& map, c
 //
 // member functions
 //
-template <class T>
-std::string MuonGeneralAnalyzer::debugRef(const edm::Ref<T> ref
-					  // , size_t (*hashFn)(const Ref<T>&)
-					  ) const{
+std::string MuonGeneralAnalyzer::toString(const ProductID& id){
   std::string result (Form(
-			   "(process: %x, product: %x, key: %x)",
-			   // hashFn(ref),
-			   ref.id().processIndex(),
-			   ref.id().productIndex(),
+			  "process: %d, product: %d",
+			  id.processIndex(),
+			  id.productIndex()
+			  ));
+  return result;
+}
+
+
+template <class T>
+std::string MuonGeneralAnalyzer::toString(const edm::Ref<T>& ref){
+  std::string result (Form(
+			   "%s, key: %d",
+			   toString(ref.id()).c_str(),
 			   ref.key()
 			   ));
   return result;
@@ -371,7 +380,6 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
   // return;
   // ################################################################################
 
-  //std::cout << "--- 1" << std::endl;
   reco::TrackCollection oldSa0hitsTracks;
   for(auto trk : *oldSaTracks){
     if(trk.hitPattern().numberOfValidMuonHits() == 0)
@@ -393,104 +401,208 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
   std::vector<bool>    oldSaMask(   oldSaTracks->size(), false);
   std::vector<bool> oldSaUpdMask(oldSaUpdTracks->size(), false);
   std::vector<bool>    oldGlMask(   oldGlTracks->size(), false);
-  
-  //std::cout << "--- 2" << std::endl;
 
   // ********************************************************************************
   // Collections of trackrefs of the muons: match FROM
   std::vector<reco::TrackRef> innerTrackRefs;
   std::vector<reco::TrackRef> outerTrackRefs;
   std::vector<reco::TrackRef> globalTrackRefs;
+  std::map<reco::TrackRef, reco::MuonRef> innerToMuons;
+  std::map<reco::TrackRef, std::vector<TrackingRecHit*>> innerToSegments;
   innerTrackRefs .reserve(muons->size());
   outerTrackRefs .reserve(muons->size());
   globalTrackRefs.reserve(muons->size());
-  for(auto muon : *muons){
+
+  if(debugPrint || outputPrint) std::cout << "Looping on muons to extract tracks\n";
+
+  for(unsigned int i = 0; i < muons->size(); ++i){
+    const reco::Muon& muon = muons->at(i);
     reco::TrackRef innerTrackRef  = muon.innerTrack ();
     reco::TrackRef outerTrackRef  = muon.outerTrack ();
     reco::TrackRef globalTrackRef = muon.globalTrack();
-    if(innerTrackRef.isAvailable()  && innerTrackRef.isNonnull() )
+    std::cout << "Inner "
+	      << " isNonnull? "   << innerTrackRef.isNonnull()
+	      // << " isAvailable? " << innerTrackRef.isAvailable()
+	      << '\n'
+	      << "Outer "
+	      << " isNonnull? "   << outerTrackRef.isNonnull()
+	      // << " isAvailable? " << outerTrackRef.isAvailable()
+	      << '\n'
+	      << "Global"
+	      << " isNonnull? "   << globalTrackRef.isNonnull()
+	      // << " isAvailable? " << globalTrackRef.isAvailable()
+	      << '\n';
+
+    if(innerTrackRef.isNonnull() && innerTrackRef.isAvailable() ){
+      // std::cout << "\tInner trackExtra:"
+      //           << " isNonnull? "   << innerTrackRef->extra().isNonnull()
+      //           << " isAvailable? " << innerTrackRef->extra().isAvailable()
+      //           << "\t pt:" << innerTrackRef->pt()
+      //           << '\n';
+      innerToMuons[innerTrackRef] = reco::MuonRef(muons, i);
       innerTrackRefs.push_back( std::move(innerTrackRef ));
-    if(outerTrackRef.isAvailable()  && outerTrackRef.isNonnull() )
+
+      std::vector<TrackingRecHit*> matchedSegments;
+      for(const reco::MuonChamberMatch& chamberMatch : muon.matches()){
+        DetId chamberID = chamberMatch.id;
+        bool isDT  = chamberID.subdetId() == MuonSubdetId::DT;
+        bool isCSC = chamberID.subdetId() == MuonSubdetId::CSC;
+        for(const reco::MuonSegmentMatch& segmentMatch : chamberMatch.segmentMatches){
+          // TrackingRecHit --> RecSegment --> DTRecSegment4D
+          //                               \-> CSCSegment
+          // so both can be stored as TrackingRecHit* and flattened later
+          if     (isDT ) matchedSegments.push_back( const_cast<TrackingRecHit*>(static_cast<const TrackingRecHit*>(segmentMatch.dtSegmentRef .get())) );
+          else if(isCSC) matchedSegments.push_back( const_cast<TrackingRecHit*>(static_cast<const TrackingRecHit*>(segmentMatch.cscSegmentRef.get())) );
+        }
+      }
+
+      if(matchedSegments.size() > 0)
+	innerToSegments[innerTrackRef] = commonHitCounter.flattenTrackingRecHits(std::move(matchedSegments));
+    }
+
+    if(outerTrackRef.isAvailable()  && outerTrackRef.isNonnull() ){
       outerTrackRefs.push_back( std::move(outerTrackRef ));
-    if(globalTrackRef.isAvailable() && globalTrackRef.isNonnull())
+    }
+
+    if(globalTrackRef.isAvailable() && globalTrackRef.isNonnull()){
       globalTrackRefs.push_back(std::move(globalTrackRef));
+    }
+
+    std::cout << '\n';
   }
 
-  CommonHitCounter::map_type outerToOldSdA     = commonHitCounter.matchingTrackCollections(outerTrackRefs , *oldSaTracks   );
-  CommonHitCounter::map_type outerToOldSdAUpd  = commonHitCounter.matchingTrackCollections(outerTrackRefs , *oldSaUpdTracks);
-  CommonHitCounter::map_type globalToOldGl     = commonHitCounter.matchingTrackCollections(globalTrackRefs, *oldGlTracks   );
-  // CommonHitCounter::map_type innerToOldGl      = commonHitCounter.matchingTrackCollections(innerTrackRefs , *oldGlTracks   );
+  std::cout << "Old Global tracks (" << toString(oldGlTracks.id()) << ")\n";
+  for (auto it = oldGlTracks->begin() ; it != oldGlTracks->end() ; ++it){
+    std::cout << '\t'
+	      << std::distance(oldGlTracks->begin(), it)
+	      << " TrackExtra:"
+  	      << " isNonnull? "   << it->extra().isNonnull()
+  	      << " isAvailable? " << it->extra().isAvailable()
+	      << '\n';
+  }
+
+  // Build associations
+  std::cout << "About to start building associations\n";
+  // 0. Inner --> Muon
+  //         already done when building vector of tracks, see innerToMuon
+
+  // 1. Global --> Inner
+  std::cout << "-- 1 --\n";
+  std::cout << "### inner to oldGl\n"    ; CommonHitCounter::map_type innerToOldGl      = commonHitCounter.matchingTrackCollections(innerTrackRefs , *oldGlTracks   , true, {DetId::Detector::Tracker});
+  std::cout << "### inner to newGl\n"    ; CommonHitCounter::map_type innerToNewGl      = commonHitCounter.matchingTrackCollections(innerTrackRefs , *newGlTracks   , true, {DetId::Detector::Tracker});
+
+  // 2. SdA --> Global
+  std::cout << "-- 2 --\n";
+  std::cout << "### oldGl to oldSda\n"   ; CommonHitCounter::map_type oldGlToOldSda     = commonHitCounter.matchingTrackCollections(*oldGlTracks   , *oldSaTracks   , true, {DetId::Detector::Muon   });
+  std::cout << "### oldGl to oldSdaUpd\n"; CommonHitCounter::map_type oldGlToOldSdaUpd  = commonHitCounter.matchingTrackCollections(*oldGlTracks   , *oldSaUpdTracks, true, {DetId::Detector::Muon   });
+  std::cout << "### newGl to newSda\n"   ; CommonHitCounter::map_type newGlToNewSda     = commonHitCounter.matchingTrackCollections(*newGlTracks   , *newSaTracks   , true, {DetId::Detector::Muon   });
+  std::cout << "### newGl to newSdaUpd\n"; CommonHitCounter::map_type newGlToNewSdaUpd  = commonHitCounter.matchingTrackCollections(*newGlTracks   , *newSaUpdTracks, true, {DetId::Detector::Muon   });
+
+  // 3. Recover SdA --> Inner using segments associated to tracker muon
+  std::cout << "-- 3 --\n";
+  CommonHitCounter::map_type innerToOldSda;
+  CommonHitCounter::map_type innerToNewSda;
+  CommonHitCounter::map_type innerToOldSdaUpd;
+  CommonHitCounter::map_type innerToNewSdaUpd;
+
+  std::cout << "### inner to old/new Sda\n";
+  for(const reco::TrackRef& inner : innerTrackRefs){
+    // Check if the inner has matched segments
+    auto matchedSegments = innerToSegments.find(inner);
+    if(matchedSegments == innerToSegments.end()){
+      continue;
+      std::cout << "No matched segments\n";
+    }
+
+    // Try to match these segments to the Sda
+    reco::TrackRef oldSda    = commonHitCounter.matchHits(matchedSegments->second, *oldSaTracks   , true, {DetId::Detector::Muon});
+    reco::TrackRef newSda    = commonHitCounter.matchHits(matchedSegments->second, *newSaTracks   , true, {DetId::Detector::Muon});
+    reco::TrackRef oldSdaUpd = commonHitCounter.matchHits(matchedSegments->second, *oldSaUpdTracks, true, {DetId::Detector::Muon});
+    reco::TrackRef newSdaUpd = commonHitCounter.matchHits(matchedSegments->second, *newSaUpdTracks, true, {DetId::Detector::Muon});
+
+    if(oldSda.isNonnull()   ) { innerToOldSda[inner]    = oldSda   ; std::cout << "\tMatched to old\n"   ;}
+    if(newSda.isNonnull()   ) { innerToNewSda[inner]    = newSda   ; std::cout << "\tMatched to new\n"   ;}
+    if(oldSdaUpd.isNonnull()) { innerToOldSdaUpd[inner] = oldSdaUpd; std::cout << "\tMatched to old Upd\n";}
+    if(newSdaUpd.isNonnull()) { innerToNewSdaUpd[inner] = newSdaUpd; std::cout << "\tMatched to new Upd\n";}
+  }
+
+  // Cross checks
+  // std::cout << "-- 4 --\n";
+  // std::cout << "### globalToOldGl    \n"; CommonHitCounter::map_type globalToOldGl     = commonHitCounter.matchingTrackCollections(globalTrackRefs, *oldGlTracks   , true                            );
+
+  // std::cout << "### outerToOldSdA    \n"; CommonHitCounter::map_type outerToOldSda     = commonHitCounter.matchingTrackCollections(outerTrackRefs , *oldSaTracks   , true, {DetId::Detector::Muon   });
+  // std::cout << "### outerToNewSdA    \n"; CommonHitCounter::map_type outerToNewSda     = commonHitCounter.matchingTrackCollections(outerTrackRefs , *newSaTracks   , true, {DetId::Detector::Muon   });
+  // std::cout << "### outerToOldSdAUpd \n"; CommonHitCounter::map_type outerToOldSdaUpd  = commonHitCounter.matchingTrackCollections(outerTrackRefs , *oldSaUpdTracks, true, {DetId::Detector::Muon   });
+  // std::cout << "### outerToNewSdAUpd \n"; CommonHitCounter::map_type outerToNewSdaUpd  = commonHitCounter.matchingTrackCollections(outerTrackRefs , *newSaUpdTracks, true, {DetId::Detector::Muon   });
+
+  // std::cout << "### oldSdAToOldSdAUpd\n"; CommonHitCounter::map_type oldSdAToOldSdaUpd = commonHitCounter.matchingTrackCollections(*oldSaTracks   , *oldSaUpdTracks, true, {DetId::Detector::Muon   });
 
   // if(debugPrint){
   //   std::cout << ">>> Dumping outer>SdA map:\n";
   //   for(auto it : outerToSdA)
   //     std::cout << '\t' 
-  // 		<< Form("%lx", outerToSdA.hash_function()(it.first)) << ' ' << debugRef(it.first ) << "  " 
-  // 		<< Form("%lx", outerToSdA.hash_function()(it.first)) << ' ' << debugRef(it.second)
+  // 		<< Form("%lx", outerToSdA.hash_function()(it.first)) << ' ' << toString(it.first ) << "  " 
+  // 		<< Form("%lx", outerToSdA.hash_function()(it.first)) << ' ' << toString(it.second)
   // 		<< '\n';    
   // }
 
   // Contruct the table 
   if(debugPrint) std::cout << ">>> building AssociationTable:\n";
   std::vector<AssociationRow> associationTable;
-  associationTable.reserve(muons->size());
-  for(unsigned int i = 0; i < muons->size(); ++i){
-    hists_["evt_muo_counter"]->Fill(2.);
+
+  associationTable.reserve(innerTrackRefs.size());
+  for(auto innerRef : innerTrackRefs){
+    std::cout << "Row\n";
     AssociationRow row;
-    row.muon = reco::MuonRef(muons, i);
-    row.inner  = muons->at(i).innerTrack();
-    row.outer  = muons->at(i).outerTrack();
-    row.global = muons->at(i).globalTrack();
+    row.inner = innerRef;
 
-    if(debugPrint)
-      std::cout << "\tMuon "<<i<<":  itself: " << debugRef(row.muon);
+    // 0. Inner --> Muon
+    auto it_muon = innerToMuons.find(innerRef);
+    if(it_muon != innerToMuons.end()) {
+      row.muon = it_muon->second;
+      std::cout << "\tmuon OK\n";
+      row.outer  = it_muon->second->outerTrack();
+      row.global = it_muon->second->globalTrack();
+    }
+    else std::cout << "\tmuon NOT FOUND\n";
 
-    if(row.outer.isNonnull()){
-      if(debugPrint)
-      	std::cout << "  outer: " << Form("%lx", outerToOldSdA.hash_function()(row.outer)) << debugRef(row.outer);
-      
-      auto it_oldSdA    = outerToOldSdA   .find(row.outer);
-      auto it_oldSdAUpd = outerToOldSdAUpd.find(row.outer);
-      
-      if(debugPrint){
-      	std::cout<<"  SdA = ";
-      	  if(it_oldSdA    == outerToOldSdA.end())
-      	    std::cout << "END";
-      	  else{
-      	    std::cout << std::distance(outerToOldSdA.begin(), it_oldSdA) << " (";
-      	    if(it_oldSdA->second.isNonnull()) std::cout << it_oldSdA->second.key();
-      	    else                              std::cout << "NULL";
-      	    std::cout << ')';
-      	  }
-      }
-      
-      row.oldSda    = it_oldSdA    != outerToOldSdA.end()    ? it_oldSdA   ->second : reco::TrackRef(oldSaTracks.id()   );
-      row.oldSdaUpd = it_oldSdAUpd != outerToOldSdAUpd.end() ? it_oldSdAUpd->second : reco::TrackRef(oldSaUpdTracks.id());
+    // 1. Inner --> Global
+    auto it_oldGl  = innerToOldGl.find(innerRef);
+    auto it_newGl  = innerToNewGl.find(innerRef);
+    if(it_oldGl != innerToOldGl.end()) {row.oldGl = it_oldGl->second; std::cout << "\toldGl OK\n"; } else std::cout << "\toldGl NOT FOUND\n";
+    if(it_newGl != innerToNewGl.end()) {row.newGl = it_newGl->second; std::cout << "\tnewGl OK\n"; } else std::cout << "\tnewGl NOT FOUND\n";
+
+    // 2. old Global -- > SdA
+    if(row.oldGl.isNonnull()){
+      auto it_oldSda    = oldGlToOldSda   .find(row.oldGl);
+      auto it_oldSdaUpd = oldGlToOldSdaUpd.find(row.oldGl);
+      if(it_oldSda    != oldGlToOldSda   .end()) {row.oldSda    = it_oldSda   ->second; std::cout << "\toldSda OK\n"   ; } else std::cout << "\toldSda NOT FOUND\n";
+      if(it_oldSdaUpd != oldGlToOldSdaUpd.end()) {row.oldSdaUpd = it_oldSdaUpd->second; std::cout << "\toldSdaUpd OK\n"; } else std::cout << "\toldSdaUpd NOT FOUND\n";
     }
-    else if(debugPrint) std::cout << "  outer is null!";
-    if(debugPrint) std::cout << '\n';
-    
-    // Global
-    if(row.muon->globalTrack().isNonnull()){
-      CommonHitCounter::map_type::const_iterator it_oldGl;
-      if     ( (it_oldGl = globalToOldGl.find(row.muon->globalTrack())) != globalToOldGl.end() )
-	row.oldGl = it_oldGl->second;  // First try matching global tracks
-      // else if( (it_oldGl = innerToOldGl .find(row.muon->globalTrack())) != innerToOldGl .end() )
-      // 	row.oldGl = it_oldGl->second;  // Then try matching the inner part of the global
-      else
-	row.oldGl = reco::TrackRef(oldGlTracks.id());
+    // 3. Recover old inner --> SdA
+    else{
+      std::cout << "\tRecovering inner --> oldSda\n";
+      auto it_oldSda    = innerToOldSda.  find(innerRef);
+      auto it_oldSdaUpd = innerToOldSdaUpd.find(innerRef);
+      if(it_oldSda    != oldGlToOldSda   .end()) {row.oldSda    = it_oldSda   ->second; std::cout << "\toldSda OK\n"   ; } else std::cout << "\toldSda NOT FOUND\n";
+      if(it_oldSdaUpd != oldGlToOldSdaUpd.end()) {row.oldSdaUpd = it_oldSdaUpd->second; std::cout << "\toldSdaUpd OK\n"; } else std::cout << "\toldSdaUpd NOT FOUND\n";
     }
-    
-    // Gen muon
-    float muEta = row.muon->eta();
-    float muPhi = row.muon->phi();
-    auto it_closestGen = std::min_element(genMuons.begin(), genMuons.end(), [muEta, muPhi](const reco::GenParticle& a, const reco::GenParticle& b) {
-	return deltaR(muEta, muPhi, a.eta(), a.phi()) < deltaR(muEta, muPhi, b.eta(), b.phi());
-      } );
-    if(it_closestGen != genMuons.end() && deltaR(muEta, muPhi, it_closestGen->eta(), it_closestGen->phi()) < 0.2)
-      row.genMuon = reco::GenParticleRef(&genMuons, std::distance(genMuons.begin(), it_closestGen));
-    else
-      row.genMuon = reco::GenParticleRef();
+
+    // 2.5 new Global --> SdA
+    if(row.newGl.isNonnull()){
+      auto it_newSda    = newGlToNewSda   .find(row.newGl);
+      auto it_newSdaUpd = newGlToNewSdaUpd.find(row.newGl);
+      if(it_newSda    != newGlToNewSda   .end()) {row.newSda    = it_newSda   ->second; std::cout << "\tnewSda OK\n"   ; } else std::cout << "\tnewSda NOT FOUND\n";   
+      if(it_newSdaUpd != newGlToNewSdaUpd.end()) {row.newSdaUpd = it_newSdaUpd->second; std::cout << "\tnewSdaUpd OK\n"; } else std::cout << "\tnewSdaUpd NOT FOUND\n";
+    }
+    // 3.5 Recover new inner --> SdA
+    else{
+      std::cout << "\tRecovering inner --> newSda\n";
+      auto it_newSda    = innerToNewSda   .find(innerRef);
+      auto it_newSdaUpd = innerToNewSdaUpd.find(innerRef);
+      if(it_newSda    != newGlToNewSda   .end()) {row.newSda    = it_newSda   ->second; std::cout << "\tnewSda OK\n"   ; } else std::cout << "\tnewSda NOT FOUND\n";
+      if(it_newSdaUpd != newGlToNewSdaUpd.end()) {row.newSdaUpd = it_newSdaUpd->second; std::cout << "\tnewSdaUpd OK\n"; } else std::cout << "\tnewSdaUpd NOT FOUND\n";
+    }
 
     associationTable.push_back(std::move(row));
   }
@@ -504,7 +616,7 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
 		      row.inner .isNonnull() ? "OK" : "-",
   		      row.outer .isNonnull() ? "OK" : "-",
 		      row.global.isNonnull() ? "OK" : "-",
-  		      row.oldSda   .key(), // row.sdaTrack   .isNonnull() ? row.sdaTrack   .key() : -1,
+  		      row.oldSda   .key(), // row.oldSda   .isNonnull() ? row.OldSda   .key() : -1,
   		      row.newSda   .key(),
 		      row.oldSdaUpd.key(),
 		      row.newSdaUpd.key(),
@@ -833,7 +945,7 @@ void MuonGeneralAnalyzer::fillPlots(const MuonGeneralAnalyzer::AssociationRow& r
     snprintf(denominator, 8, "inner");
   }
   else{
-    std::cout << "WARN: null inner track!";
+    std::cout << "WARN: null inner track!\n";
     return;
   }
 
@@ -872,9 +984,7 @@ int MuonGeneralAnalyzer::fillMatchedPlots(const char* label, const reco::TrackCo
     // std::cout << "no match" << std::endl;
     return -1;
   }
-  
-  // commonHitCounter.matchingTracks()
-  
+    
   auto track = *closestRecTrk;
   
   float receta = track.eta();
@@ -986,15 +1096,15 @@ void MuonGeneralAnalyzer::fillFakePlots(const char* label, const reco::TrackColl
 
 
 void MuonGeneralAnalyzer::endPlots(const char* label){
-  const char divopt[] = "cl=0.683 b(1,1) mode";
+  // const char divopt[] = "cl=0.683 b(1,1) mode";
   // try{ graphs_[Form("%s_eff_pt_err"   , label)]->Divide(hists_[Form("%s_eff_num_pt"   , label)], hists_["eff_den_pt"   ], divopt); } catch(cms::Exception& ex) {}
   // try{ graphs_[Form("%s_eff_aeta_err" , label)]->Divide(hists_[Form("%s_eff_num_aeta" , label)], hists_["eff_den_aeta" ], divopt); } catch(cms::Exception& ex) {}
   // try{ graphs_[Form("%s_eff_phi_err"  , label)]->Divide(hists_[Form("%s_eff_num_phi"  , label)], hists_["eff_den_phi"  ], divopt); } catch(cms::Exception& ex) {}
   // try{ graphs_[Form("%s_eff_pu_err"   , label)]->Divide(hists_[Form("%s_eff_num_allpu", label)], hists_["eff_den_allpu"], divopt); } catch(cms::Exception& ex) {}
   // try{ graphs_[Form("%s_eff_allpu_err", label)]->Divide(hists_[Form("%s_eff_num_allpu", label)], hists_["eff_den_allpu"], divopt); } catch(cms::Exception& ex) {}
   
-  float n_events = hists_["evt_muo_counter"]->GetBinContent(1);
-  float n_muons  = hists_["evt_muo_counter"]->GetBinContent(2);
+  // float n_events = hists_["evt_muo_counter"]->GetBinContent(1);
+  // float n_muons  = hists_["evt_muo_counter"]->GetBinContent(2);
   
   // hists_[Form("%s_fake_pt_perevt"          , label)]->Scale( 1./n_events );
   // hists_[Form("%s_fake_aeta_perevt"        , label)]->Scale( 1./n_events );
