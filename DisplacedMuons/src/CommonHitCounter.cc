@@ -95,7 +95,7 @@ CommonHitCounter::map_type CommonHitCounter::doMatchTrackCollections(std::vector
 		);
       auto winner = vIterProbsTo.front();
       if(debug_)
-	std::cout << "Choosen: "<<vIterProbsTo.front().second<<" last: "<<vIterProbsTo.back().second<<'\n';
+	std::cout << Form("\tChoosen: %u (%.1f%%)\n", winner.first->first.key(), 100.*winner.second);
       if(winner.second > matchingFractionCut_){
 	const reco::TrackRef& trackTo = winner.first->first;
 	associationMap.insert(std::make_pair(trackFrom, trackTo));
