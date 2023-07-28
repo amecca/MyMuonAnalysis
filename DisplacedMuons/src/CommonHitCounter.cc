@@ -80,9 +80,9 @@ CommonHitCounter::map_type CommonHitCounter::doMatchTrackCollections(std::vector
       std::tie (nMatch, nFrom, nTo) = countMatchingHits(hitsFrom, hitsTo);
       
       if(nMatch){
-	float prob = nMatch/(std::min(nTo, nFrom));
+	float prob = 2.*nMatch/(nTo + nFrom);
 	if(debug_)
-	  std::cout << Form("\tTracks: %u, %u \tmatch: %d, 1: %d, 2: %d --> %.1f%%\n",
+	  std::cout << Form("\tTrack %u --> %u \tmatch: %d, 1: %d, 2: %d --> %.1f%%\n",
 			    trackFrom.key(), trackTo.key(), nMatch, nFrom, nTo, 100*prob
 			    );
 	vIterProbsTo.push_back(make_pair(iterIdxHitsTo, prob));
@@ -95,7 +95,7 @@ CommonHitCounter::map_type CommonHitCounter::doMatchTrackCollections(std::vector
 		);
       auto winner = vIterProbsTo.front();
       if(debug_)
-	std::cout << Form("\tChoosen: %u (%.1f%%)\n", winner.first->first.key(), 100.*winner.second);
+	std::cout << Form("\tChoosen: %u (%.1f%%) - ", winner.first->first.key(), 100.*winner.second) << winner.first->first.id() << '\n';
       if(winner.second > matchingFractionCut_){
 	const reco::TrackRef& trackTo = winner.first->first;
 	associationMap.insert(std::make_pair(trackFrom, trackTo));
