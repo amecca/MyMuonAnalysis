@@ -631,6 +631,54 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
       if(it_newSdaUpd != newGlToNewSdaUpd.end()) {row.newSdaUpd = it_newSdaUpd->second; std::cout << "\tnewSdaUpd OK\n"; } else std::cout << "\tnewSdaUpd NOT FOUND\n";
     }
 
+    // 4. Debug
+    if(debugPrint){
+      // std::cout << "\t# DEBUG #\n";
+
+      if(row.global.isNonnull() && row.oldGl.isNonnull()){
+	int nMatch, nFrom, nTo;
+	std::tie (nMatch, nFrom, nTo) = commonHitCounter.countMatchingHits(*row.global, *row.oldGl, false, {});
+	float prob = 2.*nMatch/(nTo + nFrom);
+	if(nFrom != nTo || nFrom != nMatch)
+	  std::cout << "\tglobal - oldGl: "
+		    // << toString(row.global) << " - " << toString(row.oldGl)
+		    << Form(" \t%d, 1: %d, 2: %d --> %.1f%%",
+			    nMatch, nFrom, nTo, 100*prob
+			    )
+		    << '\n';
+      }
+      else if(row.global.isNonnull() != row.oldGl.isNonnull())
+	std::cout << Form("\tUNEXPECTED global: %d  oldGl: %d\n", row.global.isNonnull(), row.oldGl.isNonnull());
+      // else
+      // 	std::cout << "\tmissing global\n";
+
+      reco::TrackRef tmpSda;
+      if     (row.oldSda   .isNonnull()) tmpSda = row.oldSda;
+      else if(row.oldSdaUpd.isNonnull()) tmpSda = row.oldSdaUpd;
+
+      if(row.outer.isNonnull() && tmpSda.isNonnull()){
+	int nMatch, nFrom, nTo;
+	std::tie (nMatch, nFrom, nTo) = commonHitCounter.countMatchingHits(*row.outer, *tmpSda, false, {});
+	float prob = 2.*nMatch/(nTo + nFrom);
+	if(nFrom != nTo || nFrom != nMatch)
+	  std::cout << "\touter - oldSda: "
+		    // << toString(row.outer) << " - " << toString(row.oldSda)
+		    << Form(" \t%d, 1: %d, 2: %d --> %.1f%%",
+			    nMatch, nFrom, nTo, 100*prob
+			    )
+		    << '\n';
+      }
+      else if(row.outer.isNonnull() != tmpSda.isNonnull()){
+	std::cout << Form("\tUNEXPECTED outer: %d  oldSda: %d  oldSdaUpd: %d\n", row.outer.isNonnull(), row.oldSda.isNonnull(), row.oldSdaUpd.isNonnull());
+	if(row.outer.isNonnull())
+	  std::cout << "\t\tdR(inner, outer) : " << deltaR(row.inner->eta(), row.inner->phi(), row.outer->eta(), row.outer->phi()) << '\n';
+	else
+	  std::cout << "\t\tdR(inner, oldSda): " << deltaR(row.inner->eta(), row.inner->phi(), tmpSda->eta(), tmpSda->phi()) << '\n';
+      }
+      // else
+      // 	std::cout << "\tmissing outer\n";
+    }
+
     associationTable.push_back(std::move(row));
   }
   
