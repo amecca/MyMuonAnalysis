@@ -178,7 +178,6 @@ private:
   
   bool useGenMatchMap_;
   edm::EDGetTokenT<reco::GenParticleMatch> genParticleMatchToken_;
-  edm::Handle<reco::GenParticleMatch> genParticleMatch_;
 
   CommonHitCounter commonHitCounter;
 
@@ -318,6 +317,14 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
 	       [](const reco::GenParticle gp) { return abs(gp.pdgId()) == 13; }
 	       );
   if(debugPrint) std::cout << "of which (" << genMuons.size() << ") are gen muons" << std::endl;
+
+  // Association Muon --> GenMuon
+  edm::Handle<reco::GenParticleMatch> genParticleMatch;
+  iEvent.getByToken(genParticleMatchToken_, genParticleMatch);
+  if(debugPrint){
+    if(genParticleMatch.isValid()) std::cout << "Found Association Muon --> GenMuon (" << genParticleMatch->size() << ')' << std::endl;
+    else                           std::cout << "No Association Muon --> GenMuon" << std::endl;
+  }
 
   // Muons (all)
   edm::Handle<reco::MuonCollection> muons;
@@ -579,6 +586,13 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
     }
     else std::cout << "\tmuon NOT FOUND\n";
 
+    // 0.1 Muon --> GenMuon
+    if(genParticleMatch->contains(row.muon.id())){
+      row.genMuon = (*genParticleMatch)[row.muon];
+      std::cout << "\tgenMuon OK\n";
+    }
+    else std::cout << "\tgenMuon NOT FOUND\n";
+
     // 1. Inner --> Global
     auto it_oldGl  = innerToOldGl.find(innerRef);
     auto it_newGl  = innerToNewGl.find(innerRef);
@@ -646,8 +660,7 @@ void MuonGeneralAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
   return;
 
   // ********************************************************************************
-  
-  reco::TrackCollection genMuonTracks;
+
   // Fill plots
   for(auto gp : *genParts) {
     if(abs(gp.pdgId())!=13) continue;
@@ -973,16 +986,23 @@ void MuonGeneralAnalyzer::fillPlotsNumerator(const char* numerator, const char* 
 void MuonGeneralAnalyzer::fillPlots(const MuonGeneralAnalyzer::AssociationRow& row, int npuOOT, int npuIT){
   char denominator[8];
   TrackInfo den;
+  bool foundDenominator = false;
   if(row.genMuon.isNonnull()){
-    den = TrackInfo(row.genMuon);
-    snprintf(denominator, 8, "gen");
+    const reco::Track* best = row.genMuon->bestTrack();
+    std::cout << "[fillPlots] genMuon->bestTrack(): " << best << std::endl;
+    if(best != nullptr){
+      den = TrackInfo(best);
+      snprintf(denominator, 8, "gen");
+      foundDenominator = true;
+    }
   }
-  else if(row.inner.isNonnull()){
+
+  if(!foundDenominator && row.inner.isNonnull()){
     den = TrackInfo(row.inner);
     snprintf(denominator, 8, "inner");
   }
   else{
-    std::cout << "WARN: null inner track!\n";
+    std::cout << "WARN: null inner track! Skipping fillPlots()\n";
     return;
   }
 
