@@ -106,12 +106,25 @@ class MuonGeneralAnalyzer : public edm::one::EDAnalyzer<> {
       eta   (t->eta()  ),
       aeta  (fabs(eta) ),
       phi   (t->phi()  ),
-      charge(t->charge())
-    {}
+      charge(t->charge()),
+      nhits   (t->hitPattern().numberOfMuonHits()),
+      nvalhits(t->hitPattern().numberOfMuonHits()),
+      nsegs(0),
+      nvalsegs(0)
+    {
+      for(auto rh : t->recHits()) {
+	DetId rhDetId = rh->geographicalId();
+	if(rhDetId.det()==DetId::Detector::Muon && (rhDetId.subdetId()==MuonSubdetId::DT || rhDetId.subdetId()==MuonSubdetId::CSC)) {
+	  nsegs++;
+	  if(rh->isValid()) nvalsegs++;
+	}
+      }
+    }
 
     TrackInfo() = default;
 
     float pt, eta, aeta, phi, charge;
+    int nhits, nvalhits, nsegs, nvalsegs;
   };
   
 public:
@@ -876,12 +889,20 @@ void MuonGeneralAnalyzer::createPlots(){
     std::string name_den_pt   ( Form("eff_den_%s_pt"   , denominator) );
     std::string name_den_aeta ( Form("eff_den_%s_aeta" , denominator) );
     std::string name_den_phi  ( Form("eff_den_%s_phi"  , denominator) );
+    std::string name_nhits    ( Form("eff_den_%s_nhits"   , denominator) );
+    std::string name_nvalhits ( Form("eff_den_%s_nvalhits", denominator) );
+    std::string name_nsegs    ( Form("eff_den_%s_nsegs"   , denominator) );
+    std::string name_nvalsegs ( Form("eff_den_%s_nvalsegs", denominator) );
     std::string name_den_pu   ( Form("eff_den_%s_pu"   , denominator) );
     std::string name_den_allpu( Form("eff_den_%s_allpu", denominator) );
     std::cout << "\tcreating " << name_den_pt << std::endl;
     hists_[name_den_pt   .c_str()] = outfile_->make<TH1F>(name_den_pt   .c_str(), Form(";%s track p_{T} [GeV];events (denominator)", denominator), n_pt_bins-1  , pt_bins  );
     hists_[name_den_aeta .c_str()] = outfile_->make<TH1F>(name_den_aeta .c_str(), Form(";%s track |#eta|;events (denominator)"     , denominator), n_aeta_bins-1, aeta_bins);
     hists_[name_den_phi  .c_str()] = outfile_->make<TH1F>(name_den_phi  .c_str(), Form(";%s track #phi [rad];events (denominator)" , denominator),  10, -pig    , pig      );
+    hists_[name_nhits    .c_str()] = outfile_->make<TH1F>(name_nhits    .c_str(), Form(";%s track # of muon hits;tracks (numerator)"      , denominator), 80, 0, 80);
+    hists_[name_nvalhits .c_str()] = outfile_->make<TH1F>(name_nvalhits .c_str(), Form(";%s track # of valid muon hits;tracks (numerator)", denominator), 80, 0, 80);
+    hists_[name_nsegs    .c_str()] = outfile_->make<TH1F>(name_nsegs    .c_str(), Form(";%s track # of segments;tracks (numerator)"       , denominator), 20, 0, 20);
+    hists_[name_nvalsegs .c_str()] = outfile_->make<TH1F>(name_nvalsegs .c_str(), Form(";%s track # of valid segments;tracks (numerator)" , denominator), 20, 0, 20);
     hists_[name_den_pu   .c_str()] = outfile_->make<TH1F>(name_den_pu   .c_str(),      ";# of IT vertices;events (denominator)"    , MuonGeneralAnalyzer_BINS_pu   );
     hists_[name_den_allpu.c_str()] = outfile_->make<TH1F>(name_den_allpu.c_str(),      ";# of IT+OOT vertices;events (denominator)", MuonGeneralAnalyzer_BINS_allpu);
 
@@ -891,12 +912,20 @@ void MuonGeneralAnalyzer::createPlots(){
       std::cout << "\t\tcreating " << name_pt << std::endl;
       std::string name_aeta ( Form("eff_num_%s_%s_aeta" , denominator, numerator) );
       std::string name_phi  ( Form("eff_num_%s_%s_phi"  , denominator, numerator) );
+      std::string name_nhits   ( Form("eff_num_%s_%s_nhits"   , denominator, numerator) );
+      std::string name_nvalhits( Form("eff_num_%s_%s_nvalhits", denominator, numerator) );
+      std::string name_nsegs   ( Form("eff_num_%s_%s_nsegs"   , denominator, numerator) );
+      std::string name_nvalsegs( Form("eff_num_%s_%s_nvalsegs", denominator, numerator) );
       std::string name_pu   ( Form("eff_num_%s_%s_pu"   , denominator, numerator) );
       std::string name_allpu( Form("eff_num_%s_%s_allpu", denominator, numerator) );
       std::cout << name_pt << '\n';
       hists_[name_pt   .c_str()] = outfile_->make<TH1F>(name_pt   .c_str(), Form(";%s track p_{T} [GeV];events (numerator)", denominator), n_pt_bins-1  , pt_bins  );
       hists_[name_aeta .c_str()] = outfile_->make<TH1F>(name_aeta .c_str(), Form(";%s track |#eta|;events (numerator)"     , denominator), n_aeta_bins-1, aeta_bins);
       hists_[name_phi  .c_str()] = outfile_->make<TH1F>(name_phi  .c_str(), Form(";%s track #phi [rad];events (numerator)" , denominator),  10, -pig    , pig      );
+      hists_[name_nhits   .c_str()] = outfile_->make<TH1F>(name_nhits   .c_str(), Form(";%s track # of muon hits;tracks (numerator)"      , denominator), 80, 0, 80);
+      hists_[name_nvalhits.c_str()] = outfile_->make<TH1F>(name_nvalhits.c_str(), Form(";%s track # of valid muon hits;tracks (numerator)", denominator), 80, 0, 80);
+      hists_[name_nsegs   .c_str()] = outfile_->make<TH1F>(name_nsegs   .c_str(), Form(";%s track # of segments;tracks (numerator)"       , denominator), 20, 0, 20);
+      hists_[name_nvalsegs.c_str()] = outfile_->make<TH1F>(name_nvalsegs.c_str(), Form(";%s track # of valid segments;tracks (numerator)" , denominator), 20, 0, 20);
       hists_[name_pu   .c_str()] = outfile_->make<TH1F>(name_pu   .c_str(),      ";# of IT vertices;events (numerator)"    , MuonGeneralAnalyzer_BINS_pu   );
       hists_[name_allpu.c_str()] = outfile_->make<TH1F>(name_allpu.c_str(),      ";# of IT+OOT vertices;events (numerator)", MuonGeneralAnalyzer_BINS_allpu);
 
@@ -920,6 +949,14 @@ void MuonGeneralAnalyzer::fillPlotsNumerator(const char* numerator, const char* 
   hists_[ Form("eff_num_%s_%s_phi"  , denominator, numerator) ]->Fill(den.phi );
   hists_[ Form("eff_num_%s_%s_pu"   , denominator, numerator) ]->Fill(npuIT   );
   hists_[ Form("eff_num_%s_%s_allpu", denominator, numerator) ]->Fill(npuIT+npuOOT);
+
+  std::string name_nhits   (Form("eff_num_%s_%s_nhits"   , denominator, numerator));
+  std::string name_nvalhits(Form("eff_num_%s_%s_nvalhits", denominator, numerator));
+
+  hists_[ Form("eff_num_%s_%s_nhits"   , denominator, numerator) ]->Fill(den.nhits   );
+  hists_[ Form("eff_num_%s_%s_nvalhits", denominator, numerator) ]->Fill(den.nvalhits);
+  hists_[ Form("eff_num_%s_%s_nsegs"   , denominator, numerator) ]->Fill(den.nsegs   );
+  hists_[ Form("eff_num_%s_%s_nvalsegs", denominator, numerator) ]->Fill(den.nvalsegs);
 
   // if     (num.pt == 0)
   //   std::cout << "ERROR: " << numerator   << " pt is null!" << std::endl;
