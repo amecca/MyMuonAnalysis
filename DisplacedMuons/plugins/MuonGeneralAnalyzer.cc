@@ -241,7 +241,7 @@ MuonGeneralAnalyzer::~MuonGeneralAnalyzer() {
 }
 
 
-template <class MAP = CommonHitCounter::map_type>
+template <class MAP>
 typename MAP::const_iterator MuonGeneralAnalyzer::reverse_find(const MAP& map, const typename MAP::mapped_type& val){
   return find_if(map.begin(), map.end(), [val](const typename MAP::value_type pair){ return pair.second == val; });
 }
